@@ -8,6 +8,7 @@ import type {
   AgentOption,
 } from "./types"
 import { Markdown } from "./markdown"
+import { client } from "./api"
 import { recentModels } from "./recent"
 
 /* ---------- helpers ---------- */
@@ -134,7 +135,74 @@ export function AgentPicker({
 
 type ToolBlockData = Extract<Block, { type: "tool" }>
 
-function ToolBlock({ block }: { block: ToolBlockData }) {
+/*
+   A screenshot or other file output: the uri is a data URI, a URL, or a path
+   on the desktop the fs API serves. data:/http(s) render directly; a path
+   fetches its bytes through client.file.read.
+*/
+function ToolImage({
+  uri,
+  mime,
+  sessionDirectory,
+}: {
+  uri: string
+  mime?: string
+  sessionDirectory?: string
+}) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let revoke: string | undefined
+    const load = async () => {
+      try {
+        if (uri.startsWith("data:") || /^https?:\/\//.test(uri)) {
+          if (!cancelled) setSrc(uri)
+          return
+        }
+        const location = sessionDirectory
+          ? { location: { directory: sessionDirectory } }
+          : undefined
+        const bytes = await client.file.read({
+          path: uri,
+          ...(location ?? {}),
+        } as never)
+        const blob = new Blob([bytes as unknown as BlobPart], {
+          type: mime || "image/png",
+        })
+        const url = URL.createObjectURL(blob)
+        revoke = url
+        if (!cancelled) setSrc(url)
+      } catch {
+        if (!cancelled) setFailed(true)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+      if (revoke) URL.revokeObjectURL(revoke)
+    }
+  }, [uri, mime, sessionDirectory])
+
+  if (failed) return null
+  if (!src) return <div className="tool-image-loading">screenshot…</div>
+  return (
+    <img
+      className="tool-image"
+      src={src}
+      alt={uri.split(/[\\/]/).pop() || "screenshot"}
+    />
+  )
+}
+
+function ToolBlock({
+  block,
+  sessionDirectory,
+}: {
+  block: ToolBlockData
+  sessionDirectory?: string
+}) {
   const [open, setOpen] = useState(false)
   const done = block.state === "completed"
   const failed = block.state === "error"
@@ -146,6 +214,18 @@ function ToolBlock({ block }: { block: ToolBlockData }) {
         <span className="tool-state">{failed ? "error" : done ? "done" : block.state}</span>
         <span className="tool-caret">{open ? "−" : "+"}</span>
       </button>
+      {block.images && (
+        <div className="tool-images">
+          {block.images.map((img, i) => (
+            <ToolImage
+              key={`${img.uri.slice(0, 40)}-${i}`}
+              uri={img.uri}
+              mime={img.mime}
+              sessionDirectory={sessionDirectory}
+            />
+          ))}
+        </div>
+      )}
       {open && (
         <div className="tool-body">
           <pre className="tool-io">{block.input}</pre>
@@ -173,7 +253,15 @@ function ReasoningBlock({ text }: { text: string }) {
 
 /* ---------- chat message list ---------- */
 
-export function ChatView({ items, streaming }: { items: ChatItem[]; streaming: boolean }) {
+export function ChatView({
+  items,
+  streaming,
+  sessionDirectory,
+}: {
+  items: ChatItem[]
+  streaming: boolean
+  sessionDirectory?: string
+}) {
   const endRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -219,7 +307,13 @@ export function ChatView({ items, streaming }: { items: ChatItem[]; streaming: b
                   return <Markdown key={key} text={block.text} />
                 if (block.type === "reasoning")
                   return <ReasoningBlock key={key} text={block.text} />
-                return <ToolBlock key={key} block={block} />
+                return (
+                  <ToolBlock
+                    key={key}
+                    block={block}
+                    sessionDirectory={sessionDirectory}
+                  />
+                )
               })}
               {!item.done && streaming && <span className="cursor" />}
             </div>

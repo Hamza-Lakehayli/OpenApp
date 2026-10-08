@@ -40,6 +40,7 @@ export type Block =
       state: string
       input: string
       output?: string
+      images?: Array<{ uri: string; mime?: string }>
     }
 
 const ordinal = (part: unknown, i: number): number =>
@@ -90,6 +91,7 @@ function toolBlock(part: SessionMessageAssistantTool, ord: number): Block {
   }
 
   let output: string | undefined
+  const images: Array<{ uri: string; mime?: string }> = []
   if (status === "error") {
     output = state?.error?.message || state?.error?.title || "error"
   } else if (Array.isArray(state?.content)) {
@@ -97,6 +99,11 @@ function toolBlock(part: SessionMessageAssistantTool, ord: number): Block {
       .filter((c) => c.type === "text" && c.text)
       .map((c) => c.text as string)
     if (texts.length) output = texts.join("\n")
+    // screenshots and other file outputs ride as file parts — the uri is a
+    // data URI, a URL, or a path the fs API serves
+    for (const c of state.content as Array<{ type?: string; uri?: string; mime?: string }>) {
+      if (c.type === "file" && c.uri) images.push({ uri: c.uri, mime: c.mime })
+    }
   }
 
   return {
@@ -107,6 +114,7 @@ function toolBlock(part: SessionMessageAssistantTool, ord: number): Block {
     state: status,
     input,
     output,
+    ...(images.length ? { images } : {}),
   }
 }
 

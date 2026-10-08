@@ -429,6 +429,28 @@ button:disabled { cursor: default; opacity: 0.45; }
 }
 .tool-io.out { border-top: 1px dashed var(--border); }
 
+/* screenshots and other file outputs a tool produced */
+.tool-images {
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tool-image {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  align-self: flex-start;
+}
+.tool-image-loading {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--faint);
+}
+
 /* ---------- composer ---------- */
 
 .composer-wrap {

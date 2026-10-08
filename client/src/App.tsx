@@ -402,7 +402,11 @@ export function App() {
 
         {activeId ? (
           <>
-            <ChatView items={items} streaming={busy} />
+            <ChatView
+              items={items}
+              streaming={busy}
+              sessionDirectory={activeSession?.location?.directory}
+            />
             <Composer
               disabled={!connected}
               running={busy}
