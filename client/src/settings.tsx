@@ -581,6 +581,8 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [expired, setExpired] = useState(false)
+  const [now, setNow] = useState(Date.now())
 
   const load = async () => {
     try {
@@ -601,7 +603,9 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
     load()
   }, [])
 
-  // the active attempt: the server completes it once the browser flow lands
+  // the active attempt: the server completes it once the browser flow lands.
+  // Attempts live for 10 minutes — past that the callback rejects (400), and
+  // a superseded/cancelled attempt answers 404, which ends the wait here.
   useEffect(() => {
     if (!attempt) return
     let stopped = false
@@ -617,20 +621,33 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
           if (!stopped) {
             setAttempt(null)
             setAnswers({})
+            setExpired(false)
             await load()
           }
           return
         }
-      } catch {
-        /* expired or gone: keep polling until cancelled */
+        if (!stopped) timer = setTimeout(tick, 2000)
+      } catch (err) {
+        // 404: the attempt expired or was replaced — stop waiting
+        if (!stopped) {
+          setAttempt(null)
+          setAnswers({})
+          setExpired(true)
+        }
       }
-      if (!stopped) timer = setTimeout(tick, 2000)
     }
     void tick()
     return () => {
       stopped = true
       if (timer) clearTimeout(timer)
     }
+  }, [attempt])
+
+  // the expiry countdown while an attempt is open
+  useEffect(() => {
+    if (!attempt) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
   }, [attempt])
 
   const beginOAuth = async (integration: IntegrationInfo, method: IntegrationMethod) => {
@@ -653,6 +670,8 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
         data,
       })
       setExpanded(null)
+      setExpired(false)
+      setNow(Date.now())
       setError(null)
     } catch (err) {
       setError(String(err))
@@ -708,6 +727,11 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       {error && <div className="panel-error">{error}</div>}
+      {expired && !attempt && (
+        <div className="panel-note">
+          The sign-in window expired (attempts live 10 minutes) — start again.
+        </div>
+      )}
 
       {attempt && (
         <div className="panel-form">
@@ -728,6 +752,13 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
           <div className="auth-wait">
             <span className="tool-dot run" /> waiting for you to finish in the
             browser…
+            <span className="auth-ttl">
+              {Math.max(0, Math.floor((attempt.data.time.expires - now) / 60000))}
+              :
+              {String(
+                Math.max(0, Math.floor(((attempt.data.time.expires - now) / 1000) % 60)),
+              ).padStart(2, "0")}
+            </span>
           </div>
           <div className="form-actions">
             <button className="btn-ghost" onClick={cancelAttempt}>
