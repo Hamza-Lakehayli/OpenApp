@@ -13,7 +13,8 @@ import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem } from "./types"
 import { Composer } from "./composer"
 import { SettingsMenu, SettingsPanel, type Panel } from "./settings"
-import { toChatItems } from "./types"
+import { toChatItems, timeAgo } from "./types"
+import { touchRecent } from "./recent"
 
 const DEFAULT_DIRECTORY = ""
 
@@ -189,6 +190,11 @@ export function App() {
     }
   }, [activeId, loadMessages])
 
+  // using a session marks its model recently used, even without an explicit pick
+  useEffect(() => {
+    touchRecent(activeSession?.model)
+  }, [activeSession?.model])
+
   /* ---------- actions ---------- */
 
   const createSession = async (): Promise<string | undefined> => {
@@ -314,6 +320,7 @@ export function App() {
   }
 
   const pickModel = async (m: ModelInfo) => {
+    touchRecent(m) // the picker's "Recently used" group
     if (!activeId) {
       // greeting screen: remember the choice for the session we will create
       setPendingModel(m)

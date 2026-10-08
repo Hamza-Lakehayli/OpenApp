@@ -41,7 +41,7 @@ function StatusDot({ status }: { status: string }) {
 
 /* ---------- the ⋮ menu ---------- */
 
-export type Panel = "mcp" | "skills" | null
+export type Panel = "mcp" | "skills" | "providers" | null
 
 export function SettingsMenu({
   onOpen,
@@ -86,6 +86,18 @@ export function SettingsMenu({
             <span className="picker-item-name">Skills</span>
             <span className="picker-item-provider">
               view, add, remove SKILL.md files
+            </span>
+          </button>
+          <button
+            className="picker-item"
+            onClick={() => {
+              setOpen(false)
+              onOpen("providers")
+            }}
+          >
+            <span className="picker-item-name">Providers</span>
+            <span className="picker-item-provider">
+              sign in — OAuth works from this phone too
             </span>
           </button>
         </div>
@@ -519,6 +531,303 @@ export function McpPanel({
   )
 }
 
+/* ---------- Providers panel ---------- */
+
+type IntegrationMethod = {
+  id?: string
+  type?: string
+  label?: string
+  form?: Array<{
+    key: string
+    title?: string
+    type?: string
+    placeholder?: string
+    options?: Array<{ value: string; label?: string; description?: string }>
+    when?: Array<{ key: string; op: string; value: string }>
+  }>
+}
+
+type IntegrationInfo = {
+  id: string
+  name: string
+  methods?: IntegrationMethod[]
+  connections?: Array<Record<string, unknown>>
+}
+
+type AttemptState = {
+  integrationID: string
+  methodLabel: string
+  data: {
+    attemptID: string
+    url: string
+    instructions: string
+    mode: "auto" | "code"
+    time: { created: number; expires: number }
+  }
+}
+
+/*
+   Providers panel: the OAuth sign-ins, driven entirely through the server's
+   integration API — begin an attempt, hand the user the URL (and the code
+   for device flows), poll until the server sees the flow land. Device-code
+   methods complete from any browser, including this phone; loopback-callback
+   methods need the desktop's browser.
+*/
+export function ProvidersPanel({ onClose }: { onClose: () => void }) {
+  const [integrations, setIntegrations] = useState<IntegrationInfo[]>([])
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [attempt, setAttempt] = useState<AttemptState | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const load = async () => {
+    try {
+      const res = await client.integration.list()
+      const list = (
+        Array.isArray(res) ? res : ((res as { data?: unknown }).data ?? [])
+      ) as IntegrationInfo[]
+      setIntegrations(
+        list.filter((i) => (i.methods ?? []).some((m) => m.type === "oauth")),
+      )
+      setError(null)
+    } catch (err) {
+      setError(String(err))
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  // the active attempt: the server completes it once the browser flow lands
+  useEffect(() => {
+    if (!attempt) return
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const tick = async () => {
+      try {
+        const res = await client.integration.oauth.status({
+          integrationID: attempt.integrationID,
+          attemptID: attempt.data.attemptID,
+        })
+        const status = (res as { data?: { status?: string } }).data?.status
+        if (status === "complete") {
+          if (!stopped) {
+            setAttempt(null)
+            setAnswers({})
+            await load()
+          }
+          return
+        }
+      } catch {
+        /* expired or gone: keep polling until cancelled */
+      }
+      if (!stopped) timer = setTimeout(tick, 2000)
+    }
+    void tick()
+    return () => {
+      stopped = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [attempt])
+
+  const beginOAuth = async (integration: IntegrationInfo, method: IntegrationMethod) => {
+    setBusy(integration.id)
+    try {
+      const formAnswers: Record<string, string> = {}
+      for (const field of method.form ?? []) {
+        if (answers[field.key]) formAnswers[field.key] = answers[field.key]
+      }
+      const res = await client.integration.oauth.connect({
+        integrationID: integration.id,
+        methodID: method.id ?? integration.id,
+        ...(Object.keys(formAnswers).length ? { answer: formAnswers } : {}),
+      } as never)
+      const data = (res as { data?: AttemptState["data"] }).data
+      if (!data?.attemptID) throw new Error("no attempt returned")
+      setAttempt({
+        integrationID: integration.id,
+        methodLabel: method.label ?? integration.name,
+        data,
+      })
+      setExpanded(null)
+      setError(null)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const cancelAttempt = async () => {
+    const a = attempt
+    setAttempt(null)
+    setAnswers({})
+    if (!a) return
+    try {
+      await client.integration.oauth.cancel({
+        integrationID: a.integrationID,
+        attemptID: a.data.attemptID,
+      } as never)
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  const codeIn = (instructions: string): string | undefined =>
+    instructions.match(/code[:\s]+([A-Za-z0-9][A-Za-z0-9-]{3,})/i)?.[1]
+
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  const whenMatches = (field: NonNullable<IntegrationMethod["form"]>[number]) => {
+    for (const w of field.when ?? []) {
+      if (w.op === "eq" && answers[w.key] !== w.value) return false
+    }
+    return true
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>Providers</h3>
+        <div className="panel-actions">
+          <button className="icon-btn" title="Close" aria-label="Close panel" onClick={onClose}>
+            <XMarkIcon />
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="panel-error">{error}</div>}
+
+      {attempt && (
+        <div className="panel-form">
+          <div className="auth-title">Sign in — {attempt.methodLabel}</div>
+          <div className="auth-instructions">{attempt.data.instructions}</div>
+          {codeIn(attempt.data.instructions) && (
+            <button
+              className="auth-code"
+              title="Tap to copy"
+              onClick={() => copyCode(codeIn(attempt.data.instructions) as string)}
+            >
+              {copied ? "copied ✓" : codeIn(attempt.data.instructions)}
+            </button>
+          )}
+          <a className="auth-link" href={attempt.data.url} target="_blank" rel="noreferrer">
+            Open the login page <span aria-hidden="true">↗</span>
+          </a>
+          <div className="auth-wait">
+            <span className="tool-dot run" /> waiting for you to finish in the
+            browser…
+          </div>
+          <div className="form-actions">
+            <button className="btn-ghost" onClick={cancelAttempt}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="panel-list">
+        {integrations.map((i) => {
+          const methods = (i.methods ?? []).filter((m) => m.type === "oauth")
+          const connected = (i.connections ?? []).length > 0
+          return (
+            <div key={i.id} className="panel-row">
+              <StatusDot status={connected ? "connected" : ""} />
+              <div className="panel-row-main">
+                <span className="panel-row-name">{i.name}</span>
+                <span className="panel-row-sub">
+                  {connected
+                    ? "connected"
+                    : methods.map((m) => m.label ?? m.id).join(" · ")}
+                </span>
+              </div>
+              <div className="panel-row-actions">
+                {methods.length === 1 ? (
+                  <button
+                    className="btn-ghost"
+                    disabled={busy === i.id}
+                    onClick={() => beginOAuth(i, methods[0])}
+                  >
+                    Sign in
+                  </button>
+                ) : (
+                  <button
+                    className="btn-ghost"
+                    disabled={busy === i.id}
+                    onClick={() => setExpanded(expanded === i.id ? null : i.id)}
+                  >
+                    {expanded === i.id ? "Close" : "Sign in"}
+                  </button>
+                )}
+              </div>
+              {expanded === i.id && (
+                <div className="panel-resources">
+                  {methods.map((m) => (
+                    <div key={m.id ?? m.label} className="panel-resource">
+                      {(m.form ?? [])
+                        .filter(whenMatches)
+                        .map((f) =>
+                          f.options ? (
+                            <select
+                              key={f.key}
+                              className="field"
+                              value={answers[f.key] ?? ""}
+                              onChange={(e) =>
+                                setAnswers({ ...answers, [f.key]: e.target.value })
+                              }
+                            >
+                              <option value="">{f.title ?? f.key}</option>
+                              {f.options.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label ?? o.value}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              key={f.key}
+                              className="field"
+                              placeholder={f.placeholder ?? f.title ?? f.key}
+                              value={answers[f.key] ?? ""}
+                              onChange={(e) =>
+                                setAnswers({ ...answers, [f.key]: e.target.value })
+                              }
+                            />
+                          ),
+                        )}
+                      <button
+                        className="btn-ghost"
+                        disabled={busy === i.id}
+                        onClick={() => beginOAuth(i, m)}
+                      >
+                        {m.label ?? m.id}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {integrations.length === 0 && (
+          <div className="panel-empty">No OAuth providers found</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* ---------- Skills panel ---------- */
 
 type SkillEntry = {
@@ -753,6 +1062,8 @@ export function SettingsPanel({
       <div className="panel-host">
         {panel === "mcp" ? (
           <McpPanel sessionDirectory={sessionDirectory} onClose={onClose} />
+        ) : panel === "providers" ? (
+          <ProvidersPanel onClose={onClose} />
         ) : (
           <SkillsPanel sessionDirectory={sessionDirectory} onClose={onClose} />
         )}

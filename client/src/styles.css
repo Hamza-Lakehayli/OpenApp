@@ -519,6 +519,14 @@ button:disabled { cursor: default; opacity: 0.45; }
   box-shadow: 0 12px 32px #00000099;
   z-index: 30;
 }
+.picker-group-label {
+  padding: 8px 10px 4px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
 .picker-item {
   display: flex;
   flex-direction: column;
@@ -727,6 +735,47 @@ button:disabled { cursor: default; opacity: 0.45; }
   padding: 4px 0;
 }
 .panel-empty { padding: 20px 12px; font-size: 13px; color: var(--faint); text-align: center; }
+
+/* providers panel — the OAuth attempt card */
+.auth-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.auth-instructions { font-size: 12.5px; color: var(--dim); }
+.auth-code {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.auth-code:active { transform: scale(0.97); }
+.auth-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+}
+.auth-link:hover { border-color: var(--accent); }
+.auth-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.auth-wait .tool-dot { flex: none; }
+select.field { appearance: none; }
 
 /* ---------- empty state ---------- */
 

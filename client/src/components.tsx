@@ -8,6 +8,7 @@ import type {
   AgentOption,
 } from "./types"
 import { Markdown } from "./markdown"
+import { recentModels } from "./recent"
 
 /* ---------- helpers ---------- */
 
@@ -41,6 +42,25 @@ export function ModelPicker({
   )
   const label = current?.name ?? model?.id ?? "Model"
 
+  const isCurrent = (m: ModelInfo) =>
+    m.id === model?.id && m.providerID === model?.providerID
+  const recent = recentModels(models)
+  const rest = models.filter((m) => !recent.includes(m) || isCurrent(m))
+
+  const renderItem = (m: ModelInfo) => (
+    <button
+      key={`${m.providerID}/${m.id}`}
+      className={"picker-item" + (isCurrent(m) ? " selected" : "")}
+      onClick={() => {
+        onPick(m)
+        setOpen(false)
+      }}
+    >
+      <span className="picker-item-name">{m.name}</span>
+      <span className="picker-item-provider">{m.providerID}</span>
+    </button>
+  )
+
   return (
     <div className="picker" ref={ref}>
       <button className="picker-btn" onClick={() => setOpen(!open)}>
@@ -49,24 +69,14 @@ export function ModelPicker({
       </button>
       {open && (
         <div className="picker-menu">
-          {models.map((m) => (
-            <button
-              key={`${m.providerID}/${m.id}`}
-              className={
-                "picker-item" +
-                (m.id === model?.id && m.providerID === model?.providerID
-                  ? " selected"
-                  : "")
-              }
-              onClick={() => {
-                onPick(m)
-                setOpen(false)
-              }}
-            >
-              <span className="picker-item-name">{m.name}</span>
-              <span className="picker-item-provider">{m.providerID}</span>
-            </button>
-          ))}
+          {recent.length > 0 && (
+            <div className="picker-group-label">Recently used</div>
+          )}
+          {recent.map(renderItem)}
+          {recent.length > 0 && rest.length > 0 && (
+            <div className="picker-group-label">All models</div>
+          )}
+          {rest.map(renderItem)}
         </div>
       )}
     </div>
