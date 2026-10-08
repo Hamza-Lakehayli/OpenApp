@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from "react"
 import { client } from "./api"
 import type { McpServer, ModelRef } from "@opencode/client"
+import {
+  BookOpenIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  LinkIcon,
+  LinkSlashIcon,
+  PencilSquareIcon,
+  PlusIcon,
+  TrashIcon,
+  XMarkIcon,
+} from "@heroicons/react/20/solid"
 
 /* ---------- primitives ---------- */
 
@@ -91,6 +102,17 @@ type McpConfigShape = {
   command?: string[]
   cwd?: string
   environment?: Record<string, string>
+  headers?: Record<string, string>
+}
+
+/** Parse `KEY=value` lines into a record (shared by env and headers fields). */
+function parseKeyValue(text: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const line of text.split("\n").map((l) => l.trim()).filter(Boolean)) {
+    const eq = line.indexOf("=")
+    if (eq > 0) out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim()
+  }
+  return out
 }
 
 function McpForm({
@@ -118,32 +140,34 @@ function McpForm({
       .map(([k, v]) => `${k}=${v}`)
       .join("\n"),
   )
+  const [headers, setHeaders] = useState(
+    Object.entries(initial.headers ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join("\n"),
+  )
 
   const submit = () => {
     const trimmed = name.trim()
     if (!trimmed) return
-    const config: Record<string, unknown> = { type, enabled: true }
+    const config: Record<string, unknown> = { type }
     if (type === "remote") {
       const parsed = url.trim()
       if (!parsed) return
       config.url = parsed
+      // remote servers authenticate with headers, not env — and a token
+      // header opts out of the OAuth login dance (needs_auth otherwise).
+      const headerLines = parseKeyValue(headers)
+      if (Object.keys(headerLines).length) {
+        config.headers = headerLines
+        config.oauth = false
+      }
     } else {
       const argv = command.trim().split(/\s+/)
       if (!argv.length) return
       config.command = argv
       if (cwd.trim()) config.cwd = cwd.trim()
-    }
-    const envLines = env
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-    if (envLines.length) {
-      const environment: Record<string, string> = {}
-      for (const line of envLines) {
-        const eq = line.indexOf("=")
-        if (eq > 0) environment[line.slice(0, eq)] = line.slice(eq + 1)
-      }
-      if (Object.keys(environment).length) config.environment = environment
+      const envLines = parseKeyValue(env)
+      if (Object.keys(envLines).length) config.environment = envLines
     }
     onSubmit(trimmed, config)
     onClose()
@@ -173,12 +197,32 @@ function McpForm({
         </button>
       </div>
       {type === "remote" ? (
-        <input
-          className="field"
-          placeholder="https://example.com/mcp"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
+        <>
+          <input
+            className="field"
+            placeholder="https://example.com/mcp"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <textarea
+            className="field"
+            rows={2}
+            placeholder={"headers, KEY=value per line — e.g. Authorization=Bearer <token>"}
+            value={headers}
+            onChange={(e) => setHeaders(e.target.value)}
+          />
+          {initial.environment && Object.keys(initial.environment).length > 0 && (
+            <div className="field-hint">
+              This server's stored config has environment variables — remote
+              servers ignore them. Put the token in headers instead
+              (Authorization=Bearer …).
+            </div>
+          )}
+          <div className="field-hint">
+            Remote servers authenticate with headers — GitHub: a Bearer token.
+            Environment variables only apply to local (command) servers.
+          </div>
+        </>
       ) : (
         <>
           <input
@@ -193,15 +237,15 @@ function McpForm({
             value={cwd}
             onChange={(e) => setCwd(e.target.value)}
           />
+          <textarea
+            className="field"
+            rows={2}
+            placeholder={"environment variables, KEY=value per line (optional)"}
+            value={env}
+            onChange={(e) => setEnv(e.target.value)}
+          />
         </>
       )}
-      <textarea
-        className="field"
-        rows={2}
-        placeholder={"environment variables, KEY=value per line (optional)"}
-        value={env}
-        onChange={(e) => setEnv(e.target.value)}
-      />
       <div className="form-actions">
         <button className="btn-ghost" onClick={onClose}>
           Cancel
@@ -370,20 +414,27 @@ export function McpPanel({
       <div className="panel-head">
         <h3>MCP servers</h3>
         <div className="panel-actions">
-          <button className="btn-ghost" onClick={loadResources}>
-            {showResources ? "Hide resources" : "Resources"}
+          <button
+            className="btn-icon"
+            title={showResources ? "Hide resources" : "Resources"}
+            aria-label={showResources ? "Hide resources" : "Resources"}
+            onClick={loadResources}
+          >
+            {showResources ? <EyeSlashIcon /> : <BookOpenIcon />}
           </button>
           <button
-            className="btn-ghost"
+            className="btn-icon"
+            title={adding ? "Close form" : "Add server"}
+            aria-label={adding ? "Close form" : "Add server"}
             onClick={() => {
               setAdding(!adding)
               setEditing(null)
             }}
           >
-            {adding ? "Close" : "Add"}
+            <PlusIcon />
           </button>
-          <button className="btn-ghost" onClick={onClose}>
-            ✕
+          <button className="icon-btn" title="Close" aria-label="Close panel" onClick={onClose}>
+            <XMarkIcon />
           </button>
         </div>
       </div>
@@ -416,30 +467,36 @@ export function McpPanel({
             </div>
             <div className="panel-row-actions">
               <button
-                className="btn-ghost"
+                className="btn-icon"
+                title="Edit"
+                aria-label="Edit server"
                 disabled={busy === s.name}
                 onClick={() => {
                   setEditing(s.name)
                   setAdding(false)
                 }}
               >
-                Edit
+                <PencilSquareIcon />
               </button>
               {s.status.status !== "pending" && (
                 <button
-                  className="btn-ghost"
+                  className="btn-icon"
+                  title={s.status.status === "connected" ? "Disconnect" : "Connect"}
+                  aria-label={s.status.status === "connected" ? "Disconnect server" : "Connect server"}
                   disabled={busy === s.name}
                   onClick={() => toggleConnection(s)}
                 >
-                  {s.status.status === "connected" ? "Disconnect" : "Connect"}
+                  {s.status.status === "connected" ? <LinkSlashIcon /> : <LinkIcon />}
                 </button>
               )}
               <button
-                className="btn-ghost danger"
+                className="btn-icon danger"
+                title="Remove"
+                aria-label="Remove server"
                 disabled={busy === s.name}
                 onClick={() => remove(s.name)}
               >
-                Remove
+                <TrashIcon />
               </button>
             </div>
             {showResources && resources[s.name] && (
@@ -603,11 +660,16 @@ export function SkillsPanel({
       <div className="panel-head">
         <h3>Skills</h3>
         <div className="panel-actions">
-          <button className="btn-ghost" onClick={() => setAdding(!adding)}>
-            {adding ? "Close" : "Add"}
+          <button
+            className="btn-icon"
+            title={adding ? "Close form" : "Add skill"}
+            aria-label={adding ? "Close form" : "Add skill"}
+            onClick={() => setAdding(!adding)}
+          >
+            <PlusIcon />
           </button>
-          <button className="btn-ghost" onClick={onClose}>
-            ✕
+          <button className="icon-btn" title="Close" aria-label="Close panel" onClick={onClose}>
+            <XMarkIcon />
           </button>
         </div>
       </div>
@@ -638,17 +700,21 @@ export function SkillsPanel({
                 {!isBuiltin && (
                   <>
                     <button
-                      className="btn-ghost"
+                      className="btn-icon"
+                      title={expanded === s.id ? "Hide" : "View"}
+                      aria-label={expanded === s.id ? "Hide skill" : "View skill"}
                       onClick={() => setExpanded(expanded === s.id ? null : s.id)}
                     >
-                      {expanded === s.id ? "Hide" : "View"}
+                      {expanded === s.id ? <EyeSlashIcon /> : <EyeIcon />}
                     </button>
                     <button
-                      className="btn-ghost danger"
+                      className="btn-icon danger"
+                      title="Remove"
+                      aria-label="Remove skill"
                       disabled={busy === s.name}
                       onClick={() => remove(s)}
                     >
-                      Remove
+                      <TrashIcon />
                     </button>
                   </>
                 )}

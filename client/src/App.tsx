@@ -8,7 +8,8 @@ import type {
   SessionMessageInfo,
   V2Event,
 } from "@opencode/client"
-import { ChatView, EmptyState, Sidebar } from "./components"
+import { ChatView, ConfirmDialog, EmptyState, Sidebar } from "./components"
+import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem } from "./types"
 import { Composer } from "./composer"
 import { SettingsMenu, SettingsPanel, type Panel } from "./settings"
@@ -28,6 +29,8 @@ export function App() {
   const [connected, setConnected] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [panel, setPanel] = useState<Panel>(null)
+  // the delete button asks first; archive is the default parting, erase the opt-in
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null)
   // choices made before a session exists (the greeting screen): applied on create
   const [pendingModel, setPendingModel] = useState<ModelInfo | undefined>(undefined)
   const [pendingAgent, setPendingAgent] = useState<string | undefined>(undefined)
@@ -163,8 +166,12 @@ export function App() {
 
   useEffect(() => {
     loadSessions().then((list) => {
-      if (list.length > 0) {
-        const mostRecent = [...list].sort(
+      // archived sessions stay on the server but don't reopen on boot
+      const active = list.filter(
+        (s) => !(s.metadata as { archived?: number } | undefined)?.archived,
+      )
+      if (active.length > 0) {
+        const mostRecent = [...active].sort(
           (a, b) => b.time.updated - a.time.updated,
         )[0]
         setActiveId(mostRecent.id)
@@ -241,6 +248,38 @@ export function App() {
     }
   }
 
+  /*
+     Archive is the parting move: nothing is erased — the session's metadata
+     gains `archived: <timestamp>` and the sidebar tucks it under Archived.
+     PATCH replaces the whole metadata object, so read-merge-write via
+     session.get first (verified against the live API).
+  */
+  const archiveSession = async (id: string) => {
+    try {
+      const res = await client.session.get({ sessionID: id })
+      const metadata = { ...(res.metadata ?? {}), archived: Date.now() }
+      await client.session.update({ sessionID: id, metadata })
+      if (id === activeId) setActiveId(undefined)
+      await loadSessions()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const restoreSession = async (id: string) => {
+    try {
+      const res = await client.session.get({ sessionID: id })
+      const metadata = { ...(res.metadata ?? {}) }
+      delete (metadata as { archived?: number }).archived
+      await client.session.update({ sessionID: id, metadata })
+      await loadSessions()
+      setActiveId(id)
+      setSidebarOpen(true)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   const removeSession = async (id: string) => {
     try {
       await client.session.remove({ sessionID: id })
@@ -249,6 +288,29 @@ export function App() {
     } catch (err) {
       console.error(err)
     }
+  }
+
+  /* the ✕ on a session: confirm, then archive */
+  const requestArchive = (id: string) => {
+    const s = sessions.find((x) => x.id === id)
+    setConfirm({
+      title: "Archive session?",
+      message: `"${s?.title || "Untitled"}" moves to the Archived list — nothing is deleted and you can restore it anytime.`,
+      confirmLabel: "Archive",
+      action: () => void archiveSession(id),
+    })
+  }
+
+  /* the ✕ inside the Archived list: confirm harder, then erase */
+  const requestDeleteForever = (id: string) => {
+    const s = sessions.find((x) => x.id === id)
+    setConfirm({
+      title: "Delete forever?",
+      message: `"${s?.title || "Untitled"}" and all its messages are removed for good. This cannot be undone.`,
+      confirmLabel: "Delete forever",
+      danger: true,
+      action: () => void removeSession(id),
+    })
   }
 
   const pickModel = async (m: ModelInfo) => {
@@ -286,7 +348,7 @@ export function App() {
   const busy = activeId ? Boolean(running[activeId]) : false
 
   return (
-    <div className={"app" + (sidebarOpen ? " shifted" : "")}>
+    <div className="app">
       <Sidebar
         sessions={sessions}
         activeId={activeId}
@@ -300,8 +362,11 @@ export function App() {
           setActiveId(undefined)
           setSidebarOpen(false)
         }}
-        onDelete={removeSession}
+        onArchive={requestArchive}
+        onRestore={restoreSession}
+        onDeleteForever={requestDeleteForever}
         open={sidebarOpen}
+        onOpen={() => setSidebarOpen(true)}
         onClose={() => setSidebarOpen(false)}
       />
 
@@ -371,6 +436,8 @@ export function App() {
         sessionDirectory={activeSession?.location?.directory}
         onClose={() => setPanel(null)}
       />
+
+      <ConfirmDialog request={confirm} onCancel={() => setConfirm(null)} />
     </div>
   )
 }
