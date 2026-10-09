@@ -9,6 +9,7 @@ import type {
 } from "./types"
 import { Markdown } from "./markdown"
 import { client } from "./api"
+import { XMarkIcon } from "@heroicons/react/20/solid"
 import { recentModels } from "./recent"
 
 /* ---------- helpers ---------- */
@@ -151,6 +152,7 @@ function ToolImage({
 }) {
   const [src, setSrc] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
+  const [zoom, setZoom] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -185,14 +187,43 @@ function ToolImage({
     }
   }, [uri, mime, sessionDirectory])
 
+  // Esc dismisses the lightbox
+  useEffect(() => {
+    if (!zoom) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoom(false)
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [zoom])
+
   if (failed) return null
   if (!src) return <div className="tool-image-loading">screenshot…</div>
+  const alt = uri.split(/[\\/]/).pop() || "screenshot"
   return (
-    <img
-      className="tool-image"
-      src={src}
-      alt={uri.split(/[\\/]/).pop() || "screenshot"}
-    />
+    <>
+      <img
+        className="tool-image clickable"
+        src={src}
+        alt={alt}
+        title="Tap to enlarge"
+        onClick={() => setZoom(true)}
+      />
+      {zoom && (
+        <div
+          className="lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={alt}
+          onClick={() => setZoom(false)}
+        >
+          <button className="lightbox-close" aria-label="Close" onClick={() => setZoom(false)}>
+            <XMarkIcon />
+          </button>
+          <img className="lightbox-img" src={src} alt={alt} />
+        </div>
+      )}
+    </>
   )
 }
 

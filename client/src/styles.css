@@ -445,11 +445,48 @@ button:disabled { cursor: default; opacity: 0.45; }
   border-radius: 8px;
   align-self: flex-start;
 }
+.tool-image.clickable { cursor: zoom-in; }
 .tool-image-loading {
   padding: 8px 14px;
   font-size: 12px;
   color: var(--faint);
 }
+
+/* the image lightbox: tap to open, tap anywhere / ✕ / Esc to dismiss */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #000000e6;
+  cursor: zoom-out;
+  animation: fade-in var(--anim-fast) var(--ease-standard);
+}
+.lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+.lightbox-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--dim);
+}
+.lightbox-close:hover { color: var(--text); }
+.lightbox-close svg { width: 18px; height: 18px; flex: none; }
 
 /* ---------- composer ---------- */
 
