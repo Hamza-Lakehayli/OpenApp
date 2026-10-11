@@ -58,6 +58,31 @@ model:
 
 The welcome appears once; "Got it" dismisses it for good.
 
+## Security
+
+**What protects you:** OpenCode enforces a random 32-byte password on every
+service start. This app never weakens that: the dev path keeps the password
+on your machine only (Vite injects it; the browser never sees it), there are
+no cookies (nothing for a malicious site to ride), and all rendered content
+is React-escaped — agent output, tool logs and markdown are never raw HTML.
+The pairing link carries credentials in its URL fragment, which browsers
+never send to servers, and the app clears it from the address bar on load.
+
+**Trust model — the two rules that matter:**
+
+1. **Run the dev server on networks you trust.** `npm run dev` opens the app
+   to your Wi-Fi with your OpenCode credentials attached — that's what makes
+   the phone work, and it means anyone on the same network can use your
+   OpenCode. Home Wi-Fi: fine. Coffee shop: don't, or tunnel it (below).
+2. **Away from home, use an encrypted path.** The built-in remote tunnel
+   (OpenCode 2.0.26+) or Tailscale wrap the connection in TLS; plain LAN
+   HTTP sends the password unencrypted (sniffable on hostile networks).
+
+Smaller notes: in the hosted/downloaded variants the password lives in the
+browser's localStorage (device-local — don't pair on a shared machine), and
+a pairing QR is a bearer credential — anyone who sees it has your password
+until the service restarts.
+
 ## Ship it: two GitHub-only paths, nothing to host
 
 The built app is static files — there is no backend, and no secrets ship
