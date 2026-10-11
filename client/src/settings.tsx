@@ -619,7 +619,14 @@ type AttemptState = {
    methods complete from any browser, including this phone; loopback-callback
    methods need the desktop's browser.
 */
-export function ProvidersPanel({ onClose }: { onClose: () => void }) {
+export function ProvidersPanel({
+  onClose,
+  initialView = "oauth",
+}: {
+  onClose: () => void
+  initialView?: "oauth" | "key"
+}) {
+  const [view, setView] = useState<"oauth" | "key">(initialView)
   const [integrations, setIntegrations] = useState<IntegrationInfo[]>([])
   const [all, setAll] = useState<IntegrationInfo[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -786,12 +793,35 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <div className="panel-note">
-        Sign in with your subscription — OAuth in the browser. The{" "}
-        <code>opencode</code> models in the picker are already free.
+      <div className="provider-tabs">
+        <button
+          className={view === "oauth" ? "on" : ""}
+          onClick={() => setView("oauth")}
+        >
+          Subscriptions
+        </button>
+        <button
+          className={view === "key" ? "on" : ""}
+          onClick={() => setView("key")}
+        >
+          API keys
+        </button>
       </div>
 
-      <ApiKeySection integrations={all} />
+      {view === "key" ? (
+        <>
+          <div className="panel-note">
+            Paste a key from your provider's dashboard — it's stored in
+            OpenCode's credential store on your desktop, never in this app.
+          </div>
+          <ApiKeySection integrations={all} />
+        </>
+      ) : (
+        <>
+          <div className="panel-note">
+            Sign in with your subscription — OAuth opens in your browser. The{" "}
+            <code>opencode</code> models in the picker are already free.
+          </div>
 
       {error && <div className="panel-error">{error}</div>}
       {expired && !attempt && (
@@ -922,6 +952,8 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
           <div className="panel-empty">No OAuth providers found</div>
         )}
       </div>
+        </>
+      )}
     </div>
   )
 }
@@ -1147,10 +1179,12 @@ export function SkillsPanel({
 export function SettingsPanel({
   panel,
   sessionDirectory,
+  providerView,
   onClose,
 }: {
   panel: Panel
   sessionDirectory?: string
+  providerView?: "oauth" | "key"
   onClose: () => void
 }) {
   if (!panel) return null
@@ -1161,7 +1195,7 @@ export function SettingsPanel({
         {panel === "mcp" ? (
           <McpPanel sessionDirectory={sessionDirectory} onClose={onClose} />
         ) : panel === "providers" ? (
-          <ProvidersPanel onClose={onClose} />
+          <ProvidersPanel initialView={providerView} onClose={onClose} />
         ) : panel === "files" ? (
           <FilesPanel sessionDirectory={sessionDirectory} onClose={onClose} />
         ) : (

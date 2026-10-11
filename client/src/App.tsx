@@ -44,6 +44,7 @@ export function App() {
   )
   const [pair, setPair] = useState(false)
   const [changeConn, setChangeConn] = useState(false)
+  const [providerView, setProviderView] = useState<"oauth" | "key">("oauth")
 
   const activeSession = sessions.find((s) => s.id === activeId)
   const activeRef = useRef<string | undefined>(undefined)
@@ -408,7 +409,10 @@ export function App() {
             </span>
             {activeId && (
               <SettingsMenu
-                onOpen={(p) => setPanel(p)}
+                onOpen={(p) => {
+                  if (p === "providers") setProviderView("oauth")
+                  setPanel(p)
+                }}
                 onPair={() => setPair(true)}
                 onConnection={() => setChangeConn(true)}
               />
@@ -461,6 +465,7 @@ export function App() {
       <SettingsPanel
         panel={panel}
         sessionDirectory={activeSession?.location?.directory}
+        providerView={providerView}
         onClose={() => setPanel(null)}
       />
 
@@ -478,10 +483,12 @@ export function App() {
           onModelPick={pickModel}
           onProviders={() => {
             setWelcome(false)
+            setProviderView("oauth")
             setPanel("providers")
           }}
           onApiKey={() => {
             setWelcome(false)
+            setProviderView("key")
             setPanel("providers")
           }}
           onClose={() => setWelcome(false)}
