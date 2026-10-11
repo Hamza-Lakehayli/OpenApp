@@ -25,27 +25,47 @@ service (URL + auth read from `~/.local/state/opencode/service.json`), so:
 The service URL changes when the background service restarts — Vite reads it
 at dev-server start, so restart `npm run dev` after restarting OpenCode.
 
-## Ship it: phone connects straight to your OpenCode
+## Ship it: two GitHub-only paths, nothing to host
 
-The built app is a handful of static files — there is no backend. Host them
-once (Netlify Drop, Cloudflare Pages, or GitHub Pages — all free, nothing to
-run), and each phone connects directly to its own `opencode serve`:
+The built app is static files — there is no backend, and no secrets ship
+inside it (each user's connection lives in their own browser). Open source
+by construction: the repo *is* the distribution. Users still run OpenCode
+itself (`npm i -g opencode-ai`) — the CLI *is* the server.
+
+### 1. GitHub Pages — people just open a URL
+
+Push to GitHub, then Settings → Pages → Source: **GitHub Actions**. Every
+push to `main` deploys the app to `https://<you>.github.io/<repo>/`
+(workflow included).
+
+One browser rule to know: a page served over **HTTPS cannot call a plain
+`http://192.168.x.x` address** (mixed content). So pair the hosted app with
+an HTTPS-reachable OpenCode — the built-in remote tunnel on OpenCode
+2.0.26+ (`opencode service set remote true` → a public HTTPS URL) or
+`tailscale serve`. Both work from anywhere, home Wi-Fi included.
+
+### 2. GitHub Releases — people download ONE file
+
+`npm run build:single` inlines the entire app into a single ~350 KB HTML
+file (`dist-single/index.html`). Attach it to a GitHub Release (the
+workflow does it on `v*` tags, named `agentlink.html`). A user downloads
+it, double-clicks it, and connects to their own:
 
 ```sh
-npm i -g opencode-ai
-opencode serve --hostname 0.0.0.0 --cors https://your-app.netlify.app
+opencode serve --hostname 0.0.0.0 --cors null
 ```
 
-The server prints its URL and password as it starts. Open the app, paste
-both — or, to skip typing entirely: open the app on the PC, connect, then
-**⋮ → Pair phone** and scan the QR with the phone. The link carries the
-connection, auto-connects, and clears itself from the address bar.
+A `file://` page has no mixed-content restriction — verified: the
+downloaded file talks to OpenCode on the LAN with no browser barriers. This
+is the cleanest same-Wi-Fi path, and it works fully offline-as-artifact.
 
-- **Same Wi-Fi**: the address above; phone and PC on one network.
-- **Away from home**: OpenCode 2.0.26+ has a built-in remote tunnel
-  (`opencode service set remote true` → a public HTTPS URL — use it as the
-  server address), or a Tailscale network. No port forwarding either way.
-- **The password changed** (service restarted): ⋮ → Change connection.
+### Setup is the same either way
+
+Enter the server URL + password once (the server prints both as it
+starts) — or zero typing: connect on a PC browser, **⋮ → Pair phone**, scan
+the QR. The pairing link carries the connection in its fragment, connects
+automatically, and clears itself from the address bar. The password never
+leaves the user's devices.
 
 Developing locally stays as it is — in dev the app auto-connects through the
 Vite proxy and never shows the connect screen.

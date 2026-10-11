@@ -102,7 +102,7 @@ export function ConnectScreen({ onCancel }: { onCancel?: () => void }) {
           <p>On the machine with your projects, run:</p>
           <pre>
             npm i -g opencode-ai{"\n"}
-            opencode serve --hostname 0.0.0.0 --cors {window.location.origin}
+            opencode serve --hostname 0.0.0.0 --cors {location.protocol === "file:" ? "null" : window.location.origin}
           </pre>
           <p>
             The URL and password are printed as soon as the server starts. Same
@@ -140,6 +140,12 @@ export function PairSheet({ onClose }: { onClose: () => void }) {
               connected. The link carries this device's stored password and
               never leaves your devices.
             </p>
+            {location.protocol === "file:" && (
+              <p className="pair-note">
+                This copy runs from a file on this PC, so a phone can't open
+                its link — pair over the hosted version instead.
+              </p>
+            )}
           </div>
         ) : (
           <p className="pair-body">Not connected to a server yet.</p>
