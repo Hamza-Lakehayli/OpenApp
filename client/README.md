@@ -21,6 +21,10 @@ service (URL + auth read from `~/.local/state/opencode/service.json`), so:
 
 - **On the PC**: open `http://localhost:5173`
 - **On the phone** (same Wi-Fi): open `http://<pc-ip>:5173`
+- **Through a tunnel** (ngrok and friends): put your public hostname in
+  `client/.env.local` — `ALLOWED_HOSTS=my-tunnel.ngrok-free.dev` (comma-separate
+  several) — and restart `npm run dev`. The file is gitignored; nothing
+  personal is committed.
 
 The service URL changes when the background service restarts — Vite reads it
 at dev-server start, so restart `npm run dev` after restarting OpenCode.
