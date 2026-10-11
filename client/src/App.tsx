@@ -13,6 +13,8 @@ import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem } from "./types"
 import { Composer } from "./composer"
 import { SettingsMenu, SettingsPanel, type Panel } from "./settings"
+import { ConnectScreen, PairSheet } from "./connect"
+import { initialConnection } from "./connection"
 import { toChatItems, timeAgo } from "./types"
 import { touchRecent } from "./recent"
 
@@ -35,6 +37,10 @@ export function App() {
   // choices made before a session exists (the greeting screen): applied on create
   const [pendingModel, setPendingModel] = useState<ModelInfo | undefined>(undefined)
   const [pendingAgent, setPendingAgent] = useState<string | undefined>(undefined)
+  // the shipping gate: no connection config (outside dev) → the connect screen
+  const [configured] = useState(initialConnection != null || import.meta.env.DEV)
+  const [pair, setPair] = useState(false)
+  const [changeConn, setChangeConn] = useState(false)
 
   const activeSession = sessions.find((s) => s.id === activeId)
   const activeRef = useRef<string | undefined>(undefined)
@@ -354,6 +360,9 @@ export function App() {
 
   const busy = activeId ? Boolean(running[activeId]) : false
 
+  // no connection yet: first run of the deployed app (or a bad stored one)
+  if (!configured) return <ConnectScreen />
+
   return (
     <div className="app">
       <Sidebar
@@ -395,7 +404,11 @@ export function App() {
               {connected ? "live" : "offline"}
             </span>
             {activeId && (
-              <SettingsMenu onOpen={(p) => setPanel(p)} />
+              <SettingsMenu
+                onOpen={(p) => setPanel(p)}
+                onPair={() => setPair(true)}
+                onConnection={() => setChangeConn(true)}
+              />
             )}
           </div>
         </header>
@@ -447,6 +460,9 @@ export function App() {
         sessionDirectory={activeSession?.location?.directory}
         onClose={() => setPanel(null)}
       />
+
+      {pair && <PairSheet onClose={() => setPair(false)} />}
+      {changeConn && <ConnectScreen onCancel={() => setChangeConn(false)} />}
 
       <ConfirmDialog request={confirm} onCancel={() => setConfirm(null)} />
     </div>

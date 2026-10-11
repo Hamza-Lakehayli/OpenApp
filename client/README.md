@@ -25,6 +25,31 @@ service (URL + auth read from `~/.local/state/opencode/service.json`), so:
 The service URL changes when the background service restarts — Vite reads it
 at dev-server start, so restart `npm run dev` after restarting OpenCode.
 
+## Ship it: phone connects straight to your OpenCode
+
+The built app is a handful of static files — there is no backend. Host them
+once (Netlify Drop, Cloudflare Pages, or GitHub Pages — all free, nothing to
+run), and each phone connects directly to its own `opencode serve`:
+
+```sh
+npm i -g opencode-ai
+opencode serve --hostname 0.0.0.0 --cors https://your-app.netlify.app
+```
+
+The server prints its URL and password as it starts. Open the app, paste
+both — or, to skip typing entirely: open the app on the PC, connect, then
+**⋮ → Pair phone** and scan the QR with the phone. The link carries the
+connection, auto-connects, and clears itself from the address bar.
+
+- **Same Wi-Fi**: the address above; phone and PC on one network.
+- **Away from home**: OpenCode 2.0.26+ has a built-in remote tunnel
+  (`opencode service set remote true` → a public HTTPS URL — use it as the
+  server address), or a Tailscale network. No port forwarding either way.
+- **The password changed** (service restarted): ⋮ → Change connection.
+
+Developing locally stays as it is — in dev the app auto-connects through the
+Vite proxy and never shows the connect screen.
+
 ## What it covers
 
 | Feature | API |
