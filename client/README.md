@@ -25,6 +25,30 @@ service (URL + auth read from `~/.local/state/opencode/service.json`), so:
 The service URL changes when the background service restarts — Vite reads it
 at dev-server start, so restart `npm run dev` after restarting OpenCode.
 
+### How syncing works (there's nothing to pair)
+
+The app talks to the **same OpenCode service your TUI uses**. Sessions live
+in OpenCode's own storage, so both windows show the same list and the same
+live turns — open one here, and it's the one on the desktop. The dot in the
+header tells you the connection state ("live"). Pairing (URL + password, or
+the QR flow) only exists for the hosted/downloaded variants, where the app
+isn't behind the dev proxy.
+
+### First run
+
+On first visit the app shows a welcome with the three ways to get a working
+model:
+
+1. **Pick a model** — the `opencode` provider's models are free (no account,
+   no keys); they're grouped as "Free · no account" in the picker.
+2. **Use your subscription** — ⋮ → Providers → sign in with Claude
+   (Pro/Max) or ChatGPT (Codex). OAuth in the browser, not API keys.
+3. **Bring an API key** — ⋮ → Providers → search the provider, paste the
+   key. It's stored in OpenCode's own credential store on your desktop,
+   never in the browser.
+
+The welcome appears once; "Got it" dismisses it for good.
+
 ## Ship it: two GitHub-only paths, nothing to host
 
 The built app is static files — there is no backend, and no secrets ship

@@ -8,7 +8,7 @@ import type {
   SessionMessageInfo,
   V2Event,
 } from "@opencode/client"
-import { ChatView, ConfirmDialog, EmptyState, Sidebar } from "./components"
+import { ChatView, ConfirmDialog, EmptyState, Sidebar, Welcome } from "./components"
 import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem } from "./types"
 import { Composer } from "./composer"
@@ -39,6 +39,9 @@ export function App() {
   const [pendingAgent, setPendingAgent] = useState<string | undefined>(undefined)
   // the shipping gate: no connection config (outside dev) → the connect screen
   const [configured] = useState(initialConnection != null || import.meta.env.DEV)
+  const [welcome, setWelcome] = useState(
+    () => localStorage.getItem("agentlink.welcomed") !== "1",
+  )
   const [pair, setPair] = useState(false)
   const [changeConn, setChangeConn] = useState(false)
 
@@ -463,6 +466,27 @@ export function App() {
 
       {pair && <PairSheet onClose={() => setPair(false)} />}
       {changeConn && <ConnectScreen onCancel={() => setChangeConn(false)} />}
+
+      {welcome && (
+        <Welcome
+          models={models}
+          pendingModel={
+            pendingModel
+              ? { id: pendingModel.id, providerID: pendingModel.providerID, variant: pendingModel.variants[0]?.id }
+              : undefined
+          }
+          onModelPick={pickModel}
+          onProviders={() => {
+            setWelcome(false)
+            setPanel("providers")
+          }}
+          onApiKey={() => {
+            setWelcome(false)
+            setPanel("providers")
+          }}
+          onClose={() => setWelcome(false)}
+        />
+      )}
 
       <ConfirmDialog request={confirm} onCancel={() => setConfirm(null)} />
     </div>

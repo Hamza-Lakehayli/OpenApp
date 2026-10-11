@@ -29,6 +29,14 @@ function useOutside(onClose: () => void) {
 
 /* ---------- model picker ---------- */
 
+/**
+ * OpenCode's own hosted models — the ones a fresh install can use with no
+ * account, no keys. (Model.cost is tiers at runtime; price-zero is a bad
+ * signal — other providers also report 0 — so provider identity is the
+ * reliable "free" test.)
+ */
+export const isFreeModel = (m: ModelInfo) => m.providerID === "opencode"
+
 export function ModelPicker({
   model,
   models,
@@ -49,6 +57,8 @@ export function ModelPicker({
     m.id === model?.id && m.providerID === model?.providerID
   const recent = recentModels(models)
   const rest = models.filter((m) => !recent.includes(m) || isCurrent(m))
+  const free = rest.filter(isFreeModel)
+  const paid = rest.filter((m) => !free.includes(m))
 
   const renderItem = (m: ModelInfo) => (
     <button
@@ -76,10 +86,14 @@ export function ModelPicker({
             <div className="picker-group-label">Recently used</div>
           )}
           {recent.map(renderItem)}
-          {recent.length > 0 && rest.length > 0 && (
+          {free.length > 0 && (
+            <div className="picker-group-label">Free · no account</div>
+          )}
+          {free.map(renderItem)}
+          {paid.length > 0 && (free.length > 0 || recent.length > 0) && (
             <div className="picker-group-label">All models</div>
           )}
-          {rest.map(renderItem)}
+          {paid.map(renderItem)}
         </div>
       )}
     </div>
@@ -404,6 +418,8 @@ export function ChatView({
 
 /* ---------- empty state: greeting + composer, no dead-end button ---------- */
 
+const WELCOME_KEY = "agentlink.welcomed"
+
 export function EmptyState({ children }: { children: ReactNode }) {
   return (
     <div className="empty">
@@ -411,6 +427,123 @@ export function EmptyState({ children }: { children: ReactNode }) {
       <h2>What should we work on?</h2>
       <p>Your OpenCode sessions, live from the desktop.</p>
       {children}
+    </div>
+  )
+}
+
+/**
+ * First-run onboarding, shown over the app once: what it is, how syncing
+ * works (no pairing on the dev path — one OpenCode service, shared
+ * sessions), and the two ways to a working model — OpenCode's own free
+ * models, or an OAuth sign-in to a subscription. Only "Got it" dismisses
+ * it for good; Esc / scrim just close it for this visit.
+ */
+export function Welcome({
+  models,
+  pendingModel,
+  onModelPick,
+  onProviders,
+  onApiKey,
+  onClose,
+}: {
+  models: ModelInfo[]
+  pendingModel?: ModelRef
+  onModelPick: (m: ModelInfo) => void
+  onProviders: () => void
+  onApiKey: () => void
+  onClose: () => void
+}) {
+  const dismiss = () => {
+    localStorage.setItem(WELCOME_KEY, "1")
+    onClose()
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  const freeCount = models.filter(isFreeModel).length
+  return (
+    <div className="welcome-overlay" onClick={onClose}>
+      <div
+        className="welcome-card"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Welcome"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="empty-brand">agentlink</div>
+        <h2>A remote for the OpenCode on your machine</h2>
+        <p className="empty-sync">
+          There's nothing to pair: this app talks to the same OpenCode service
+          as your desktop, and sessions are shared live between them. When the
+          dot in the header says <span className="conn on">live</span>, you're
+          connected.
+        </p>
+        <ol className="welcome-steps">
+        <li>
+          <span className="step-num">1</span>
+          <div className="step-body">
+            <span className="step-title">Pick a model</span>
+            <span className="step-detail">
+              {freeCount > 0
+                ? `OpenCode ships ${freeCount} models that are free — no account, no keys.`
+                : "Choose one from the picker."}
+            </span>
+            <ModelPicker model={pendingModel} models={models} onPick={onModelPick} />
+          </div>
+        </li>
+        <li>
+          <span className="step-num">2</span>
+          <div className="step-body">
+            <span className="step-title">Or use your subscription</span>
+            <span className="step-detail">
+              Claude (Pro/Max) and ChatGPT (Codex) sign in with OAuth — no API
+              keys involved.
+            </span>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                dismiss()
+                onProviders()
+              }}
+            >
+              Open providers
+            </button>
+          </div>
+        </li>
+        <li>
+          <span className="step-num">3</span>
+          <div className="step-body">
+            <span className="step-title">Or bring an API key</span>
+            <span className="step-detail">
+              Anthropic, OpenAI, Google, DeepSeek and a hundred more — paste a
+              key and it lives in OpenCode's own credential store on your
+              desktop, never in this app.
+            </span>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                dismiss()
+                onApiKey()
+              }}
+            >
+              Add an API key
+            </button>
+          </div>
+        </li>
+        </ol>
+        <p className="empty-hint">Type below to start your first session.</p>
+        <div className="welcome-actions">
+          <button className="btn-ghost" onClick={dismiss}>
+            Got it
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

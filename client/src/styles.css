@@ -1183,3 +1183,175 @@ select.field { appearance: none; }
   background: #fff;
 }
 .pair-qr svg { display: block; width: 220px; height: 220px; }
+
+/* ---------- first-run welcome overlay ---------- */
+
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.5);
+  animation: fade-in var(--anim-fast) var(--ease-standard);
+}
+.welcome-card {
+  width: 100%;
+  max-width: 460px;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 26px 24px calc(22px + env(safe-area-inset-bottom));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  animation: pop-in var(--anim-fast) var(--ease-standard);
+}
+.welcome-card h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  text-align: center;
+}
+.empty-brand {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-align: center;
+}
+.empty-sync {
+  margin: -4px 0 2px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dim);
+  text-align: center;
+}
+.welcome-steps {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+.welcome-steps li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.step-num {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 2px;
+}
+.step-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.step-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+}
+.step-detail {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+.empty-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--faint);
+  text-align: center;
+}
+.welcome-actions {
+  display: flex;
+  justify-content: center;
+}
+
+/* ---------- api key (bring your own) ---------- */
+
+.apikey {
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.apikey-head {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--dim);
+}
+.apikey-search,
+.apikey-input {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+.apikey-search:focus,
+.apikey-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.apikey-results {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-y: auto;
+  max-height: 220px;
+  background: var(--bg);
+}
+.apikey-results .picker-item {
+  border-radius: 0;
+}
+.apikey-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.apikey-target {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--mono);
+  color: var(--text);
+}
+.apikey-target span {
+  color: var(--faint);
+  font-weight: 400;
+  margin-left: 6px;
+}
+.apikey-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.apikey-saved {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  color: var(--dim);
+}

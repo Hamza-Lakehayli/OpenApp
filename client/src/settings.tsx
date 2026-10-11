@@ -13,6 +13,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid"
 import { FilesPanel } from "./files-panel"
+import { ApiKeySection } from "./api-key"
 
 /* ---------- primitives ---------- */
 
@@ -620,6 +621,7 @@ type AttemptState = {
 */
 export function ProvidersPanel({ onClose }: { onClose: () => void }) {
   const [integrations, setIntegrations] = useState<IntegrationInfo[]>([])
+  const [all, setAll] = useState<IntegrationInfo[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [attempt, setAttempt] = useState<AttemptState | null>(null)
@@ -635,6 +637,7 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
       const list = (
         Array.isArray(res) ? res : ((res as { data?: unknown }).data ?? [])
       ) as IntegrationInfo[]
+      setAll(list)
       setIntegrations(
         list.filter((i) => (i.methods ?? []).some((m) => m.type === "oauth")),
       )
@@ -770,6 +773,13 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+
+      <div className="panel-note">
+        Sign in with your subscription — OAuth in the browser. The
+        <code>opencode</code> models in the picker are already free.
+      </div>
+
+      <ApiKeySection integrations={all} />
 
       {error && <div className="panel-error">{error}</div>}
       {expired && !attempt && (
