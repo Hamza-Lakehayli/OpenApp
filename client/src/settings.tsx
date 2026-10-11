@@ -637,9 +637,21 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
       const list = (
         Array.isArray(res) ? res : ((res as { data?: unknown }).data ?? [])
       ) as IntegrationInfo[]
-      setAll(list)
+      // MCP servers surface here as mcp_* integrations — they belong to
+      // the MCP panel; keep this list to real providers, subscriptions first.
+      const real = list.filter((i) => !i.id.startsWith("mcp_"))
+      setAll(real)
+      const rank = (id: string) => {
+        const i = ["claude-code", "openai", "github-copilot"].indexOf(id)
+        return i === -1 ? 3 : i
+      }
       setIntegrations(
-        list.filter((i) => (i.methods ?? []).some((m) => m.type === "oauth")),
+        real
+          .filter((i) => (i.methods ?? []).some((m) => m.type === "oauth"))
+          .sort(
+            (a, b) =>
+              rank(a.id) - rank(b.id) || a.name.localeCompare(b.name),
+          ),
       )
       setError(null)
     } catch (err) {
@@ -775,7 +787,7 @@ export function ProvidersPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="panel-note">
-        Sign in with your subscription — OAuth in the browser. The
+        Sign in with your subscription — OAuth in the browser. The{" "}
         <code>opencode</code> models in the picker are already free.
       </div>
 

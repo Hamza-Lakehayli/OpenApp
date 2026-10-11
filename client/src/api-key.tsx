@@ -17,6 +17,7 @@ export function ApiKeySection({ integrations }: { integrations: Integration[] })
   const keyable = useMemo(
     () =>
       integrations
+        .filter((i) => !i.id.startsWith("mcp_"))
         .filter((i) => (i.methods ?? []).some((m) => m.type === "key"))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [integrations],
