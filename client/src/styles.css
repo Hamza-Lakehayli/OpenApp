@@ -1383,3 +1383,54 @@ select.field { appearance: none; }
   background: var(--surface-2);
   color: var(--text);
 }
+
+/* ---------- offline help: opencode not reachable ---------- */
+
+.offline-help {
+  margin: 0 auto 18px;
+  width: min(560px, calc(100% - 32px));
+  padding: 16px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--dim);
+}
+.offline-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.offline-help p {
+  margin: 0 0 10px;
+  line-height: 1.55;
+}
+.offline-help ol {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.offline-help code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.offline-help pre {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre;
+}
+.offline-why {
+  color: var(--faint);
+  font-size: 12.5px;
+}

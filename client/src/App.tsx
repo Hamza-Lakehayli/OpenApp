@@ -8,7 +8,7 @@ import type {
   SessionMessageInfo,
   V2Event,
 } from "@opencode/client"
-import { ChatView, ConfirmDialog, EmptyState, Sidebar, Welcome } from "./components"
+import { ChatView, ConfirmDialog, EmptyState, OfflineHelp, Sidebar, Welcome } from "./components"
 import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem } from "./types"
 import { Composer } from "./composer"
@@ -45,6 +45,8 @@ export function App() {
   const [pair, setPair] = useState(false)
   const [changeConn, setChangeConn] = useState(false)
   const [providerView, setProviderView] = useState<"oauth" | "key">("oauth")
+  // service reachability: down (not running) vs auth (stale password)
+  const [connError, setConnError] = useState<"down" | "auth" | null>(null)
 
   const activeSession = sessions.find((s) => s.id === activeId)
   const activeRef = useRef<string | undefined>(undefined)
@@ -63,6 +65,34 @@ export function App() {
       return []
     }
   }, [])
+
+  // classify a dead connection: server down vs password rejected
+  const probe = useCallback(async (): Promise<boolean> => {
+    try {
+      await client.server.info()
+      setConnError(null)
+      return true
+    } catch (err) {
+      const e = err as { status?: number; message?: string }
+      const auth = e?.status === 401 || /401|unauthor/i.test(e?.message ?? "")
+      setConnError(auth ? "auth" : "down")
+      return false
+    }
+  }, [])
+
+  const refreshConnection = useCallback(async () => {
+    const ok = await probe()
+    if (ok) await loadSessions()
+    return ok
+  }, [probe, loadSessions])
+
+  // while offline, keep checking — the user may start OpenCode any moment
+  useEffect(() => {
+    if (connected) return
+    void refreshConnection()
+    const t = setInterval(() => void refreshConnection(), 15000)
+    return () => clearInterval(t)
+  }, [connected, refreshConnection])
 
   const loadMessages = useCallback(async (sessionID: string) => {
     try {
@@ -419,6 +449,13 @@ export function App() {
             )}
           </div>
         </header>
+
+        {!connected && (
+          <OfflineHelp
+            error={connError}
+            onRetry={() => void refreshConnection()}
+          />
+        )}
 
         {activeId ? (
           <>

@@ -12,6 +12,7 @@ import { client } from "./api"
 import { DocumentIcon, XMarkIcon } from "@heroicons/react/20/solid"
 import { recentModels } from "./recent"
 import { downloadFile, FileViewer } from "./files"
+import { initialConnection } from "./connection"
 
 /* ---------- helpers ---------- */
 
@@ -892,5 +893,86 @@ export function ConfirmDialog({
         </div>
       </div>
     </>
+  )
+}
+
+/* ---------- offline help: opencode not reachable ---------- */
+
+/*
+   Shown whenever the service can't be reached (or rejects the password).
+   In dev the fix is almost always "start OpenCode / restart the dev
+   server"; for the hosted and downloaded variants the fix lives in the
+   connect screen instead.
+*/
+export function OfflineHelp({
+  error,
+  onRetry,
+}: {
+  error: "down" | "auth" | null
+  onRetry: () => void
+}) {
+  const auth = error === "auth"
+  const hosted = initialConnection != null && !import.meta.env.DEV
+
+  let title: string
+  let body: ReactNode
+  if (hosted) {
+    title = auth ? "Wrong password" : "Can't reach the server"
+    body = (
+      <p>
+        {auth
+          ? "The service answered but rejected the password — update it in "
+          : "No answer from the server — is OpenCode running? Check the address in "}
+        <strong>⋮ → Change connection</strong>.
+      </p>
+    )
+  } else if (auth) {
+    title = "OpenCode answered — password changed"
+    body = (
+      <>
+        <p>
+          The service rejected the stored credentials. The dev server reads
+          the password once at start, so:
+        </p>
+        <pre>stop the dev server (Ctrl+C), then{"\n"}npm run dev</pre>
+      </>
+    )
+  } else {
+    title = "Can't reach OpenCode on this machine"
+    body = (
+      <>
+        <p>
+          This app is a remote for an OpenCode running on this same machine.
+          To see your work here — and drive it from the phone — install the
+          CLI and keep it running on the PC:
+        </p>
+        <ol>
+          <li>
+            Install it: <code>npm i -g opencode-ai</code>
+          </li>
+          <li>
+            Start it: run <code>opencode</code> (the TUI) — or{" "}
+            <code>opencode serve</code> on a headless box
+          </li>
+          <li>
+            Restart the dev server: <code>npm run dev</code>
+          </li>
+        </ol>
+      </>
+    )
+  }
+
+  return (
+    <div className="offline-help">
+      <div className="offline-title">{title}</div>
+      {body}
+      <p className="offline-why">
+        With OpenCode running on the PC, this app shows the same sessions
+        live — from the phone or any browser.
+      </p>
+      <button className="btn-ghost" onClick={onRetry}>
+        Retry
+      </button>
+    </div>
   )
 }
