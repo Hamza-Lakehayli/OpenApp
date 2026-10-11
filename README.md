@@ -1,4 +1,4 @@
-# AgentLink
+# OpenApp
 
 A phone-first web remote for [OpenCode](https://opencode.ai). It talks to the
 OpenCode service running on your machine and shows the same sessions your
