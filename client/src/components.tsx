@@ -9,8 +9,9 @@ import type {
 } from "./types"
 import { Markdown } from "./markdown"
 import { client } from "./api"
-import { XMarkIcon } from "@heroicons/react/20/solid"
+import { DocumentIcon, XMarkIcon } from "@heroicons/react/20/solid"
 import { recentModels } from "./recent"
+import { downloadFile, FileViewer } from "./files"
 
 /* ---------- helpers ---------- */
 
@@ -282,7 +283,44 @@ function ReasoningBlock({ text }: { text: string }) {
   )
 }
 
-/* ---------- chat message list ---------- */
+/* ---------- document card: a document the agent just wrote ---------- */
+
+function DocumentCard({
+  block,
+  sessionDirectory,
+}: {
+  block: Extract<Block, { type: "document" }>
+  sessionDirectory?: string
+}) {
+  const [viewer, setViewer] = useState(false)
+  return (
+    <div className="doc-card">
+      <span className="doc-icon" aria-hidden="true">
+        <DocumentIcon />
+      </span>
+      <span className="doc-card-name">{block.name}</span>
+      <div className="doc-card-actions">
+        <button className="btn-ghost" onClick={() => setViewer(true)}>
+          View
+        </button>
+        <button
+          className="btn-ghost"
+          onClick={() => downloadFile(block.path, sessionDirectory)}
+        >
+          Download
+        </button>
+      </div>
+      {viewer && (
+        <FileViewer
+          path={block.path}
+          name={block.name}
+          sessionDirectory={sessionDirectory}
+          onClose={() => setViewer(false)}
+        />
+      )}
+    </div>
+  )
+}
 
 export function ChatView({
   items,
@@ -338,6 +376,14 @@ export function ChatView({
                   return <Markdown key={key} text={block.text} />
                 if (block.type === "reasoning")
                   return <ReasoningBlock key={key} text={block.text} />
+                if (block.type === "document")
+                  return (
+                    <DocumentCard
+                      key={key}
+                      block={block}
+                      sessionDirectory={sessionDirectory}
+                    />
+                  )
                 return (
                   <ToolBlock
                     key={key}

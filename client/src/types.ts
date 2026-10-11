@@ -42,9 +42,38 @@ export type Block =
       output?: string
       images?: Array<{ uri: string; mime?: string }>
     }
+  | { type: "document"; ordinal: number; path: string; name: string }
 
 const ordinal = (part: unknown, i: number): number =>
   (part as { ordinal?: number })?.ordinal ?? i
+
+/**
+ * Documents the chat surfaces as cards: whenever a write/edit lands one of
+ * these, a card with View/Download appears in the flow. Code files stay in
+ * the Files panel — only documents push.
+ */
+const DOCUMENT_PATH = /\.(md|markdown|txt|pdf|docx?|rtf|odt|pptx|xlsx)$/i
+
+/** The document writes of an assistant message: path + part ordinal. */
+function documentWritesOf(
+  message: SessionMessageAssistant,
+): Array<{ path: string; ordinal: number }> {
+  const writes: Array<{ path: string; ordinal: number }> = []
+  message.content.forEach((part, i) => {
+    if (part.type !== "tool") return
+    const tool = part as SessionMessageAssistantTool
+    if (tool.name !== "write" && tool.name !== "edit") return
+    const state = (
+      part as { state?: { status?: string; input?: { path?: unknown } } }
+    ).state
+    if (state?.status !== "completed") return
+    const path =
+      typeof state.input?.path === "string" ? state.input.path : undefined
+    if (!path || !DOCUMENT_PATH.test(path)) return
+    writes.push({ path, ordinal: ordinal(part, i) })
+  })
+  return writes
+}
 
 /** Flatten an assistant message's content parts into ordered blocks. */
 function blocksOf(message: SessionMessageAssistant): Block[] {
@@ -133,13 +162,26 @@ export function toChatItems(messages: SessionMessageInfo[]): ChatItem[] {
         items.push({ kind: "user", id: m.id, text, time: m.time.created })
     } else if (m.type === "assistant") {
       const error = (m as { error?: { title?: string; message?: string } }).error
+      const blocks = blocksOf(m)
+      // document cards: one per path, positioned at its latest write
+      const latest = new Map<string, number>()
+      for (const w of documentWritesOf(m)) latest.set(w.path, w.ordinal)
+      for (const [path, ord] of latest) {
+        blocks.push({
+          type: "document",
+          ordinal: ord,
+          path,
+          name: path.split(/[\\/]/).pop() || path,
+        })
+      }
+      blocks.sort((a, b) => a.ordinal - b.ordinal)
       items.push({
         kind: "assistant",
         id: m.id,
         time: m.time.created,
         agent: m.agent,
         model: modelLabel(m),
-        blocks: blocksOf(m),
+        blocks,
         error: error ? `${error.title || "error"}: ${error.message || ""}` : undefined,
         done: Boolean(m.time.completed),
       })

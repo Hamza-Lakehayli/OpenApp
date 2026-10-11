@@ -12,6 +12,7 @@ import {
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid"
+import { FilesPanel } from "./files-panel"
 
 /* ---------- primitives ---------- */
 
@@ -41,12 +42,16 @@ function StatusDot({ status }: { status: string }) {
 
 /* ---------- the ⋮ menu ---------- */
 
-export type Panel = "mcp" | "skills" | "providers" | null
+export type Panel = "mcp" | "skills" | "providers" | "files" | null
 
 export function SettingsMenu({
   onOpen,
+  onPair,
+  onConnection,
 }: {
   onOpen: (panel: Exclude<Panel, null>) => void
+  onPair?: () => void
+  onConnection?: () => void
 }) {
   // Internal open state: deliberately NOT tied to the panel — tying them
   // meant the menu stayed open behind the panel and every click inside the
@@ -100,6 +105,46 @@ export function SettingsMenu({
               sign in — OAuth works from this phone too
             </span>
           </button>
+          <button
+            className="picker-item"
+            onClick={() => {
+              setOpen(false)
+              onOpen("files")
+            }}
+          >
+            <span className="picker-item-name">Files</span>
+            <span className="picker-item-provider">
+              the session's project tree — view, download
+            </span>
+          </button>
+          {onPair && (
+            <button
+              className="picker-item"
+              onClick={() => {
+                setOpen(false)
+                onPair()
+              }}
+            >
+              <span className="picker-item-name">Pair phone</span>
+              <span className="picker-item-provider">
+                scan a QR — opens this app connected
+              </span>
+            </button>
+          )}
+          {onConnection && (
+            <button
+              className="picker-item"
+              onClick={() => {
+                setOpen(false)
+                onConnection()
+              }}
+            >
+              <span className="picker-item-name">Change connection</span>
+              <span className="picker-item-provider">
+                server address and password
+              </span>
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1095,6 +1140,8 @@ export function SettingsPanel({
           <McpPanel sessionDirectory={sessionDirectory} onClose={onClose} />
         ) : panel === "providers" ? (
           <ProvidersPanel onClose={onClose} />
+        ) : panel === "files" ? (
+          <FilesPanel sessionDirectory={sessionDirectory} onClose={onClose} />
         ) : (
           <SkillsPanel sessionDirectory={sessionDirectory} onClose={onClose} />
         )}
