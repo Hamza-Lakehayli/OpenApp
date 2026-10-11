@@ -10,6 +10,9 @@ its HTTP API directly — no scraping, no shims.
 
 ## Run it
 
+Requires **Node 18+** and the OpenCode CLI running on this machine
+(`npm i -g opencode-ai`, then start `opencode`).
+
 ```sh
 cd client
 npm install
@@ -21,6 +24,8 @@ service (URL + auth read from `~/.local/state/opencode/service.json`), so:
 
 - **On the PC**: open `http://localhost:5173`
 - **On the phone** (same Wi-Fi): open `http://<pc-ip>:5173`
+  - *Phone can't connect?* Allow Node.js through your firewall when Windows
+    asks on first start (or in Windows Security → Firewall → Allow an app).
 - **Through a tunnel** (ngrok and friends): put your public hostname in
   `client/.env.local` — `ALLOWED_HOSTS=my-tunnel.ngrok-free.dev` (comma-separate
   several) — and restart `npm run dev`. The file is gitignored; nothing
