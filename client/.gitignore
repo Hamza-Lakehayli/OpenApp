@@ -1,8 +1,6 @@
 # client
 client/node_modules/
 client/dist/
-inspect_sdk.py
-inspect_service.py
 dist-single/
 
 # personal tunnel hostnames etc — never committed
