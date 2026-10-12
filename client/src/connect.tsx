@@ -44,9 +44,12 @@ export function ConnectScreen({ onCancel }: { onCancel?: () => void }) {
     try {
       const probe = OpenCode.make({
         baseUrl: cfg.url,
-        headers: cfg.password
-          ? { authorization: `Basic ${btoa(`opencode:${cfg.password}`)}` }
-          : undefined,
+        headers: {
+          ...(cfg.password
+            ? { authorization: `Basic ${btoa(`opencode:${cfg.password}`)}` }
+            : {}),
+          "ngrok-skip-browser-warning": "1",
+        },
       })
       await probe.server.info()
       saveConnection(cfg)

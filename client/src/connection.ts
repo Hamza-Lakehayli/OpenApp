@@ -43,7 +43,13 @@ export function optionsFor(
   const headers = cfg.password
     ? { authorization: `Basic ${btoa(`opencode:${cfg.password}`)}` }
     : undefined
-  return { baseUrl: cfg.url, headers }
+  // ngrok's free tier serves a warning page to any request without this
+  // header — which would break every API call through a tunnel. On servers
+  // without ngrok the extra header is ignored.
+  return {
+    baseUrl: cfg.url,
+    headers: { ...headers, "ngrok-skip-browser-warning": "1" },
+  }
 }
 
 /* ---------- QR pairing: #conn=<base64url json> ---------- */
