@@ -447,32 +447,37 @@ export function ChatView({
    Provider quota windows (the 5-hour / weekly subscription limits) are not
    in the API yet — when they land upstream, this chip is where they go.
 */
-export function UsageChip({
-  cost,
-  tokens,
-}: {
-  cost?: number
-  tokens?: { input?: number; output?: number; reasoning?: number } | null
-}) {
-  const total =
-    (tokens?.input ?? 0) + (tokens?.output ?? 0) + (tokens?.reasoning ?? 0)
-  if (cost == null && total === 0) return null
-  const tok =
-    total >= 1e6
-      ? (total / 1e6).toFixed(1) + "M"
-      : total >= 1000
-        ? (total / 1000).toFixed(1) + "k"
-        : String(total)
+export function UsageChip({ sessions }: { sessions: SessionInfo[] }) {
+  type Tok = { input?: number; output?: number; reasoning?: number }
+  const tokensOf = (s: SessionInfo): number => {
+    const t = s.tokens as Tok | undefined
+    return (t?.input ?? 0) + (t?.output ?? 0) + (t?.reasoning ?? 0)
+  }
+  const now = Date.now()
+  const usedIn = (ms: number): number =>
+    sessions
+      .filter((s) => (s.time?.updated ?? 0) >= now - ms)
+      .reduce((sum, s) => sum + tokensOf(s), 0)
+  const fiveH = usedIn(5 * 3600_000)
+  const week = usedIn(7 * 86400_000)
+  if (fiveH === 0 && week === 0) return null
+  const fmt = (t: number): string =>
+    t >= 1e9
+      ? (t / 1e9).toFixed(1) + "B"
+      : t >= 1e6
+        ? (t / 1e6).toFixed(1) + "M"
+        : t >= 1e3
+          ? (t / 1e3).toFixed(1) + "k"
+          : String(t)
   return (
     <span
       className="usage-chip"
-      title="This session's usage — cost and tokens as reported by OpenCode. Provider quota windows (5-hour / weekly) are not exposed by its API yet."
+      title="Tokens used in the last 5 hours and 7 days, across this machine's sessions. Provider subscription windows (5h / weekly limits) are not exposed by OpenCode's API yet."
     >
-      ${(cost ?? 0).toFixed(2)} · {tok} tok
+      5h {fmt(fiveH)} · 7d {fmt(week)}
     </span>
   )
 }
-
 /* ---------- empty state: greeting + composer, no dead-end button ---------- */
 
 const WELCOME_KEY = "agentlink.welcomed"

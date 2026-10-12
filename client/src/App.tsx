@@ -449,13 +449,7 @@ export function App() {
           <div className="header-meta">
             {busy && <span className="running-dot" title="Working" />}
             {activeSession && (
-              <UsageChip
-                cost={activeSession.cost}
-                tokens={activeSession.tokens as
-                  | { input?: number; output?: number; reasoning?: number }
-                  | undefined
-              }
-              />
+              <UsageChip sessions={sessions} />
             )}
             <span className={"conn " + (connected ? "on" : "off")}>
               {connected ? "live" : "offline"}
