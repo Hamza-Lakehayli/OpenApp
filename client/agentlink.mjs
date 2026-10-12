@@ -58,6 +58,10 @@ const basic = "Basic " + Buffer.from(`opencode:${password}`).toString("base64")
 /* ---------- the server: static + credential-injecting proxy ---------- */
 
 function authorized(req, url) {
+  // a browser on this machine is trusted; tunnel traffic is not
+  // (ngrok marks forwarded requests with X-Forwarded-* headers)
+  const tunneled = req.headers["x-forwarded-host"] || req.headers["x-forwarded-proto"]
+  if (!tunneled) return true
   const cookie = (req.headers.cookie || "")
     .split(/;\s*/)
     .some((c) => c === `agentlink=${KEY}`)
@@ -99,8 +103,10 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost")
     if (!authorized(req, url)) {
-      res.writeHead(401, { "content-type": "text/plain" })
-      res.end("agentlink: append ?key=<the key printed at startup>")
+      res.writeHead(401, { "content-type": "text/html; charset=utf-8" })
+      res.end(
+        "<body style=\"font-family:sans-serif;padding:2rem\">agentlink is running on this machine.<br>This public URL needs its access key - open the link printed in the agentlink window (the one ending in <code>?key=</code>).",
+      )
       return
     }
     if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {
