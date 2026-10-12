@@ -22,7 +22,17 @@ function parseBlocks(text: string): (CodeFence | { md: string })[] {
   return parts
 }
 
-function inline(text: string, keyPrefix: string): ReactNode[] {
+/** Absolute local paths (drive letters or rooted) — agents write these as
+ *  download links for files they produced. Relative paths stay plain text:
+ *  without a workspace they're ambiguous, and the agent usually also states
+ *  the full path elsewhere. */
+const FILE_PATH = /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/
+
+function inline(
+  text: string,
+  keyPrefix: string,
+  onFile?: (path: string) => void,
+): ReactNode[] {
   const nodes: ReactNode[] = []
   // code spans, bold, and links
   const pattern = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(https?:\/\/[^\s)<>]+)/g
@@ -38,6 +48,18 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
       nodes.push(<strong key={`${keyPrefix}-${i}`}>{full.slice(2, -2)}</strong>)
     } else if (full.startsWith("*")) {
       nodes.push(<em key={`${keyPrefix}-${i}`}>{full.slice(1, -1)}</em>)
+    } else if (FILE_PATH.test(full)) {
+      const name = full.split(/[\\/]/).pop() || full
+      nodes.push(
+        <button
+          key={`${keyPrefix}-${i}`}
+          className="md-file-link"
+          title={full}
+          onClick={() => onFile?.(full)}
+        >
+          {name}
+        </button>,
+      )
     } else {
       nodes.push(
         <a key={`${keyPrefix}-${i}`} href={full} target="_blank" rel="noreferrer">
@@ -52,7 +74,11 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
   return nodes
 }
 
-function renderMd(md: string, keyPrefix: string): ReactNode[] {
+function renderMd(
+  md: string,
+  keyPrefix: string,
+  onFile?: (path: string) => void,
+): ReactNode[] {
   const lines = md.split("\n")
   const out: ReactNode[] = []
   let list: { ordered: boolean; items: string[] } | null = null
@@ -110,7 +136,13 @@ function renderMd(md: string, keyPrefix: string): ReactNode[] {
   return out
 }
 
-export function Markdown({ text }: { text: string }) {
+export function Markdown({
+  text,
+  onFile,
+}: {
+  text: string
+  onFile?: (path: string) => void
+}) {
   const blocks = parseBlocks(text)
   return (
     <div className="md">
@@ -121,7 +153,7 @@ export function Markdown({ text }: { text: string }) {
             <code>{block.code}</code>
           </pre>
         ) : (
-          <Fragment key={i}>{renderMd(block.md, `md-${i}`)}</Fragment>
+          <Fragment key={i}>{renderMd(block.md, `md-${i}`, onFile)}</Fragment>
         ),
       )}
     </div>

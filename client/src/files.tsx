@@ -37,10 +37,24 @@ export async function fetchFile(
   path: string,
   sessionDirectory?: string,
 ): Promise<Blob> {
-  const location = sessionDirectory
-    ? { location: { directory: sessionDirectory } }
-    : undefined
-  const bytes = await client.file.read({ path, ...(location ?? {}) } as never)
+  // fs.read takes a path RELATIVE to a location directory. Absolute paths
+  // (like the ones agents put in markdown links) split into
+  // location=<its own directory> + path=<basename> — works for files
+  // anywhere on the machine, not just inside the project.
+  const absolute = /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("/")
+  let location: { directory: string } | undefined
+  let rel = path
+  if (absolute) {
+    const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
+    location = { directory: path.slice(0, cut) }
+    rel = path.slice(cut + 1)
+  } else if (sessionDirectory) {
+    location = { directory: sessionDirectory }
+  }
+  const bytes = await client.file.read({
+    path: rel,
+    ...(location ? { location } : {}),
+  } as never)
   const mime = MIME_BY_EXTENSION[extensionOf(path)] ?? "application/octet-stream"
   return new Blob([bytes as unknown as BlobPart], { type: mime })
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { client } from "./api"
 import type {
   AgentInfo,
@@ -8,7 +8,7 @@ import type {
   SessionMessageInfo,
   V2Event,
 } from "@opencode/client"
-import { ChatView, ConfirmDialog, EmptyState, OfflineHelp, Sidebar, Welcome } from "./components"
+import { ChatView, ConfirmDialog, EmptyState, OfflineHelp, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
 import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem } from "./types"
 import { Composer } from "./composer"
@@ -45,10 +45,23 @@ export function App() {
   const [pair, setPair] = useState(false)
   const [changeConn, setChangeConn] = useState(false)
   const [providerView, setProviderView] = useState<"oauth" | "key">("oauth")
+  // workspace for the next new session (greeting-screen picker)
+  const [workspace, setWorkspace] = useState("")
   // service reachability: down (not running) vs auth (stale password)
   const [connError, setConnError] = useState<"down" | "auth" | null>(null)
 
   const activeSession = sessions.find((s) => s.id === activeId)
+  const workspaceDirs = useMemo(
+    () =>
+      [
+        ...new Set(
+          sessions
+            .map((s) => s.location?.directory)
+            .filter((d): d is string => Boolean(d)),
+        ),
+      ].slice(0, 12),
+    [sessions],
+  )
   const activeRef = useRef<string | undefined>(undefined)
   activeRef.current = activeId
 
@@ -240,6 +253,7 @@ export function App() {
   const createSession = async (): Promise<string | undefined> => {
     try {
       const session = await client.session.create({
+        ...(workspace ? { location: { directory: workspace } } : {}),
         ...(pendingModel
           ? {
               model: {
@@ -434,6 +448,15 @@ export function App() {
           </div>
           <div className="header-meta">
             {busy && <span className="running-dot" title="Working" />}
+            {activeSession && (
+              <UsageChip
+                cost={activeSession.cost}
+                tokens={activeSession.tokens as
+                  | { input?: number; output?: number; reasoning?: number }
+                  | undefined
+              }
+              />
+            )}
             <span className={"conn " + (connected ? "on" : "off")}>
               {connected ? "live" : "offline"}
             </span>
@@ -479,6 +502,11 @@ export function App() {
           </>
         ) : (
           <EmptyState>
+            <WorkspacePicker
+              value={workspace}
+              onChange={setWorkspace}
+              directories={workspaceDirs}
+            />
             <Composer
               disabled={!connected}
               running={false}

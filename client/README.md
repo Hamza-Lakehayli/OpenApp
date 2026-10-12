@@ -26,6 +26,21 @@ service (URL + auth read from `~/.local/state/opencode/service.json`), so:
 - **On the phone** (same Wi-Fi): open `http://<pc-ip>:5173`
   - *Phone can't connect?* Allow Node.js through your firewall when Windows
     asks on first start (or in Windows Security → Firewall → Allow an app).
+
+### One command instead of a dev server
+
+After a one-time `npm run build:single`, run:
+
+```sh
+npm run agentlink
+```
+
+It serves the built app on localhost, proxies `/api` to your OpenCode
+service (the password never leaves the machine), opens your browser already
+connected, and — if the [ngrok](https://ngrok.com) CLI is installed — prints
+a QR that pairs your phone over an HTTPS tunnel. No CORS flags, no firewall
+prompts, no password on the phone. The tunnel URL is key-gated and grants
+full OpenCode access — treat it like a password.
 - **Through a tunnel** (ngrok and friends): put your public hostname in
   `client/.env.local` — `ALLOWED_HOSTS=my-tunnel.ngrok-free.dev` (comma-separate
   several) — and restart `npm run dev`. The file is gitignored; nothing

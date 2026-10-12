@@ -11,8 +11,14 @@ import { Markdown } from "./markdown"
 import { client } from "./api"
 import { DocumentIcon, XMarkIcon } from "@heroicons/react/20/solid"
 import { recentModels } from "./recent"
-import { downloadFile, FileViewer } from "./files"
+import { downloadFile, FileViewer, fileNameOf } from "./files"
 import { initialConnection } from "./connection"
+
+type TokenShape = {
+  input?: number
+  output?: number
+  reasoning?: number
+}
 
 /* ---------- helpers ---------- */
 
@@ -349,6 +355,8 @@ export function ChatView({
   const endRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // agents embed local paths as download links — clicking opens the viewer
+  const [fileLink, setFileLink] = useState<string | null>(null)
 
   useEffect(() => {
     const el = scrollRef.current
@@ -388,7 +396,13 @@ export function ChatView({
               {item.blocks.map((block: Block, i: number) => {
                 const key = `${item.id}-${i}`
                 if (block.type === "text")
-                  return <Markdown key={key} text={block.text} />
+                  return (
+                    <Markdown
+                      key={key}
+                      text={block.text}
+                      onFile={(p) => setFileLink(p)}
+                    />
+                  )
                 if (block.type === "reasoning")
                   return <ReasoningBlock key={key} text={block.text} />
                 if (block.type === "document")
@@ -413,7 +427,49 @@ export function ChatView({
         })}
         <div ref={endRef} />
       </div>
+
+      {fileLink && (
+        <FileViewer
+          path={fileLink}
+          sessionDirectory={sessionDirectory}
+          onClose={() => setFileLink(null)}
+        />
+      )}
     </div>
+  )
+}
+
+
+/* ---------- header usage chip ---------- */
+
+/*
+   What OpenCode's API exposes about usage: per-session tokens and cost.
+   Provider quota windows (the 5-hour / weekly subscription limits) are not
+   in the API yet — when they land upstream, this chip is where they go.
+*/
+export function UsageChip({
+  cost,
+  tokens,
+}: {
+  cost?: number
+  tokens?: { input?: number; output?: number; reasoning?: number } | null
+}) {
+  const total =
+    (tokens?.input ?? 0) + (tokens?.output ?? 0) + (tokens?.reasoning ?? 0)
+  if (cost == null && total === 0) return null
+  const tok =
+    total >= 1e6
+      ? (total / 1e6).toFixed(1) + "M"
+      : total >= 1000
+        ? (total / 1000).toFixed(1) + "k"
+        : String(total)
+  return (
+    <span
+      className="usage-chip"
+      title="This session's usage — cost and tokens as reported by OpenCode. Provider quota windows (5-hour / weekly) are not exposed by its API yet."
+    >
+      ${(cost ?? 0).toFixed(2)} · {tok} tok
+    </span>
   )
 }
 
@@ -545,6 +601,86 @@ export function Welcome({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ---------- workspace picker (new sessions) ---------- */
+
+/*
+   New sessions default to the folder OpenCode runs in. This lets the user
+   aim the session at any directory — recent ones come from their sessions,
+   or they type a path.
+*/
+export function WorkspacePicker({
+  value,
+  onChange,
+  directories,
+}: {
+  value: string
+  onChange: (dir: string) => void
+  directories: string[]
+}) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState("")
+  const ref = useOutside(() => setOpen(false))
+  return (
+    <div className="picker workspace" ref={ref}>
+      <button className="picker-btn" onClick={() => setOpen(!open)}>
+        <span className="workspace-label">Workspace</span>
+        <span className="workspace-value">{value ? fileNameOf(value) : "default"}</span>
+        <span className="picker-caret">▾</span>
+      </button>
+      {open && (
+        <div className="picker-menu menu-up">
+          {directories.slice(0, 6).map((d) => (
+            <button
+              key={d}
+              className={"picker-item" + (d === value ? " selected" : "")}
+              onClick={() => {
+                onChange(d)
+                setOpen(false)
+              }}
+            >
+              <span className="picker-item-name">{fileNameOf(d)}</span>
+              <span className="picker-item-provider">{d}</span>
+            </button>
+          ))}
+          <div className="workspace-custom">
+            <input
+              className="workspace-input"
+              placeholder="or type a folder path…"
+              value={draft}
+              spellCheck={false}
+              autoCapitalize="off"
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <button
+              className="btn-primary"
+              disabled={!draft.trim()}
+              onClick={() => {
+                onChange(draft.trim())
+                setDraft("")
+                setOpen(false)
+              }}
+            >
+              Use
+            </button>
+          </div>
+          {value && (
+            <button
+              className="picker-item"
+              onClick={() => {
+                onChange("")
+                setOpen(false)
+              }}
+            >
+              <span className="picker-item-name">default</span>
+              <span className="picker-item-provider">the folder OpenCode runs in</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

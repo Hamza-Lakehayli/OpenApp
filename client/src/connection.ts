@@ -76,6 +76,7 @@ export function connectionFromHash(): ConnectionConfig | null {
   if (!match) return null
   const cfg = decodeConnection(match[1])
   history.replaceState(null, "", window.location.pathname + window.location.search)
+  if (cfg) saveConnection(cfg) // pairing must survive reloads
   return cfg
 }
 
