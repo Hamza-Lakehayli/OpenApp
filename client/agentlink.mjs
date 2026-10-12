@@ -145,6 +145,17 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error("\n  Port " + PORT + " is busy — agentlink is probably already")
+    console.error("  running in another window. Close that one first, or:")
+    console.error("    set PORT=8171 && npm run agentlink")
+  } else {
+    console.error("server error:", err.message)
+  }
+  process.exit(1)
+})
+
 server.listen(PORT, "127.0.0.1", () => {
   const origin = `http://localhost:${PORT}`
   const conn = Buffer.from(
@@ -169,8 +180,12 @@ server.listen(PORT, "127.0.0.1", () => {
     console.log("  (couldn't auto-open the browser — visit the local URL above)")
   }
 
-  // ngrok, if it's installed
-  const ngrok = spawn("ngrok", ["http", String(PORT)], { stdio: "ignore" })
+  // ngrok, if it's installed — its own visible window so it can be
+  // inspected and killed independently of the app
+  const ngrok =
+    platform === "win32"
+      ? spawn("cmd", ["/c", "start", "agentlink-ngrok", "cmd", "/k", "ngrok", "http", String(PORT)], { stdio: "ignore" })
+      : spawn("ngrok", ["http", String(PORT)], { stdio: "ignore" })
   ngrok.on("error", () => {
     console.log("")
     console.log("  ngrok not installed — phone over Wi-Fi needs the Vite dev")
