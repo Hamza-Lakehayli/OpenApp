@@ -29,11 +29,13 @@ service (URL + auth read from `~/.local/state/opencode/service.json`), so:
 
 ### One command instead of a dev server
 
-After a one-time `npm run build:single`, run:
+Double-click **`start-agentlink.bat`** (repo root) — it handles everything
+below: installs dependencies on first run, serves the built app on
+localhost, opens your browser already connected, and sets up the phone QR
+if ngrok is installed. (macOS/Linux: `./start-agentlink.sh`.)
 
-```sh
-npm run agentlink
-```
+Under the hood that's `npm run agentlink` — After a one-time
+`npm run build:single`, it:
 
 It serves the built app on localhost, proxies `/api` to your OpenCode
 service (the password never leaves the machine), opens your browser already

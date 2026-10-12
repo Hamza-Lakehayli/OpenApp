@@ -19,10 +19,13 @@ npm i -g opencode-ai
 opencode                 # keep it running (or: opencode serve)
 
 git clone <this repo>
-cd copilot2phone/client
-npm install
-npm run dev
+cd copilot2phone
 ```
+
+Then just **double-click `start-agentlink.bat`** (Windows) or run
+`./start-agentlink.sh` (macOS/Linux) — first run installs dependencies,
+after that it starts the app instantly, opens your browser already
+connected, and sets up the phone QR if ngrok is installed.
 
 - **On the PC**: open `http://localhost:5173`
 - **On the phone** (same Wi-Fi): open `http://<pc-ip>:5173`
