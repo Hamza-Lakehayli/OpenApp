@@ -30,6 +30,8 @@ export function ConnectScreen({ onCancel }: { onCancel?: () => void }) {
   const [password, setPassword] = useState(existing?.password ?? "")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [paste, setPaste] = useState(false)
+  const [pasted, setPasted] = useState("")
 
   const connect = async () => {
     const cfg: ConnectionConfig = { url: normalizeUrl(url), password: password.trim() }
@@ -87,6 +89,37 @@ export function ConnectScreen({ onCancel }: { onCancel?: () => void }) {
           />
         </label>
 
+        <button className="connect-alt" onClick={() => setPaste(!paste)}>
+          {paste ? "hide" : "running the OpenCode TUI? paste service.json instead"}
+        </button>
+        {paste && (
+          <>
+            <textarea
+              className="connect-input connect-paste"
+              rows={3}
+              value={pasted}
+              spellCheck={false}
+              onChange={(e) => setPasted(e.target.value)}
+            />
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                try {
+                  const j = JSON.parse(pasted)
+                  setUrl(normalizeUrl(String(j.url ?? "")))
+                  setPassword(String(j.password ?? ""))
+                  setPaste(false)
+                  setError(null)
+                } catch {
+                  setError("That isn't valid service.json - copy the whole file.")
+                }
+              }}
+            >
+              Fill the fields
+            </button>
+          </>
+        )}
+
         {error && <div className="connect-error">{error}</div>}
 
         <button className="btn-primary connect-go" disabled={busy} onClick={() => void connect()}>
@@ -106,7 +139,9 @@ export function ConnectScreen({ onCancel }: { onCancel?: () => void }) {
           </pre>
           <p>
             The URL and password are printed as soon as the server starts. Same
-            Wi-Fi (or Tailscale) and you're in.
+            Wi-Fi (or Tailscale) and you're in. Running the OpenCode TUI
+            instead? It runs a background service too - its details are in
+            ~/.local/state/opencode/service.json; paste that file above.
           </p>
         </div>
       </div>

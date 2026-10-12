@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url"
 import { spawn, spawnSync } from "node:child_process"
 import { Readable } from "node:stream"
 import { randomUUID } from "node:crypto"
-import { renderANSI } from "uqr"
+import { renderANSI, renderSVG } from "uqr"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT || 8170)
@@ -38,7 +38,7 @@ if (!existsSync(htmlPath)) {
     process.exit(1)
   }
 }
-const serveHtml = () => readFileSync(htmlPath) // fresh on every request
+const serveHtml = () => readFileSync(htmlPath, "utf8") // fresh on every request
 
 /* ---------- your OpenCode service ---------- */
 
@@ -99,6 +99,10 @@ async function proxy(req, res, url) {
   else res.end()
 }
 
+let phoneUrl = null // set once ngrok reports its public URL
+
+const bannerHtml = readFileSync(join(here, "phone-banner.html"), "utf8")
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost")
@@ -107,6 +111,21 @@ const server = http.createServer(async (req, res) => {
       res.end(
         "<body style=\"font-family:sans-serif;padding:2rem\">agentlink is running on this machine.<br>This public URL needs its access key - open the link printed in the agentlink window (the one ending in <code>?key=</code>).",
       )
+      return
+    }
+    if (url.pathname === "/_agentlink/info") {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+      res.end(JSON.stringify({ phoneUrl }))
+      return
+    }
+    if (url.pathname === "/_agentlink/qr.svg") {
+      if (!phoneUrl) {
+        res.writeHead(404)
+        res.end()
+        return
+      }
+      res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "no-store" })
+      res.end(renderSVG(phoneUrl, { border: 1 }))
       return
     }
     if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {
@@ -119,7 +138,7 @@ const server = http.createServer(async (req, res) => {
       "cache-control": "no-store",
       ...(needsCookie ? { "set-cookie": `agentlink=${KEY}; Path=/; HttpOnly; SameSite=Lax` } : {}),
     })
-    res.end(serveHtml())
+    res.end(serveHtml().replace("</body>", bannerHtml + "</body>"))
   } catch (err) {
     if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" })
     res.end("agentlink proxy error: " + String(err).slice(0, 200))
@@ -174,7 +193,7 @@ server.listen(PORT, "127.0.0.1", () => {
           const phoneConn = Buffer.from(
             JSON.stringify({ u: publicUrl, p: "" }),
           ).toString("base64url")
-          const phoneUrl = `${publicUrl}/?key=${KEY}#conn=${phoneConn}`
+          phoneUrl = publicUrl + "/?key=" + KEY + "#conn=" + phoneConn
           console.log("")
           console.log(`  phone (scan, or open): ${phoneUrl}`)
           console.log("")
@@ -184,7 +203,7 @@ server.listen(PORT, "127.0.0.1", () => {
           console.log("  click Visit once.")
         }
       } catch {
-        if (tries > 30) clearInterval(poll)
+        if (tries > 240) clearInterval(poll)
       }
     }, 500)
   })

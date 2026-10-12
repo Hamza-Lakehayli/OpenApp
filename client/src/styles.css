@@ -1513,3 +1513,23 @@ select.field { appearance: none; }
   border-radius: 999px;
   white-space: nowrap;
 }
+
+/* ---------- connect screen: paste helper ---------- */
+
+.connect-alt {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--faint);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.connect-alt:hover { color: var(--accent); }
+.connect-paste {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 12px;
+}
