@@ -5,4 +5,4 @@ dist-single/
 
 # personal tunnel hostnames etc — never committed
 .env.local
-.playwright-mcp/
+.playwright-mcp/.agentlink-key

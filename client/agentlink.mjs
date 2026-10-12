@@ -13,7 +13,7 @@
  * Access is gated by a random key: the tunnel URL without it serves nothing.
  */
 import http from "node:http"
-import { readFileSync, existsSync, statSync } from "node:fs"
+import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs"
 import { homedir, platform } from "node:os"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -24,7 +24,14 @@ import { renderANSI, renderSVG } from "uqr"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT || 8170)
-const KEY = randomUUID().replaceAll("-", "").slice(0, 12)
+// the access key is generated ONCE and stored next to the launcher, so the
+// phone pairing survives restarts (gitignored — never committed)
+const keyFile = join(here, ".agentlink-key")
+let KEY = existsSync(keyFile) ? readFileSync(keyFile, "utf8").trim() : ""
+if (!KEY) {
+  KEY = randomUUID().replaceAll("-", "").slice(0, 24)
+  writeFileSync(keyFile, KEY)
+}
 
 /* ---------- the built app ---------- */
 
@@ -136,7 +143,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
-      ...(needsCookie ? { "set-cookie": `agentlink=${KEY}; Path=/; HttpOnly; SameSite=Lax` } : {}),
+      ...(needsCookie ? { "set-cookie": `agentlink=${KEY}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax` } : {}),
     })
     res.end(serveHtml().replace("</body>", bannerHtml + "</body>"))
   } catch (err) {
