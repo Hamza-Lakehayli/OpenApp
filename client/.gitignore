@@ -5,4 +5,7 @@ dist-single/
 
 # personal tunnel hostnames etc — never committed
 .env.local
-.playwright-mcp/.agentlink-key
+
+# launcher secrets + test artifacts
+.agentlink-key
+.playwright-mcp/
