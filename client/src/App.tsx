@@ -20,6 +20,9 @@ import { touchRecent } from "./recent"
 
 const DEFAULT_DIRECTORY = ""
 
+// providers whose subscriptions actually carry 5h / weekly usage windows
+const SUBSCRIPTION_PROVIDERS = ["claude-code", "openai"]
+
 type Running = Record<string, boolean> // sessionID -> busy
 
 export function App() {
@@ -448,9 +451,14 @@ export function App() {
           </div>
           <div className="header-meta">
             {busy && <span className="running-dot" title="Working" />}
-            {activeSession && (
-              <UsageChip sessions={sessions} />
-            )}
+            {activeSession &&
+              SUBSCRIPTION_PROVIDERS.indexOf(activeSession.model?.providerID ?? "") !== -1 && (
+                <UsageChip
+                  sessions={sessions.filter(
+                    (s) => s.model?.providerID === activeSession.model?.providerID,
+                  )}
+                />
+              )}
             <span className={"conn " + (connected ? "on" : "off")}>
               {connected ? "live" : "offline"}
             </span>
