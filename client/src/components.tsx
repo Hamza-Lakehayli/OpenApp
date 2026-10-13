@@ -478,6 +478,41 @@ export function UsageChip({ sessions }: { sessions: SessionInfo[] }) {
     </span>
   )
 }
+/* ---------- permission prompt: the script + the decision ---------- */
+
+export function PermissionCard({
+  request,
+  onReply,
+}: {
+  request: { action: string; resources: string[]; message?: string }
+  onReply: (decision: "once" | "always" | "reject") => void
+}) {
+  return (
+    <div className="perm-card">
+      <div className="perm-head">
+        OpenCode wants to <strong>{request.action}</strong>
+      </div>
+      {request.resources.map((r, i) => (
+        <pre key={i} className="perm-script">
+          {r}
+        </pre>
+      ))}
+      {request.message && <p className="perm-msg">{request.message}</p>}
+      <div className="perm-actions">
+        <button className="btn-primary" onClick={() => onReply("once")}>
+          Allow once
+        </button>
+        <button className="btn-ghost" onClick={() => onReply("always")}>
+          Always
+        </button>
+        <button className="btn-ghost perm-reject" onClick={() => onReply("reject")}>
+          Reject
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /* ---------- empty state: greeting + composer, no dead-end button ---------- */
 
 const WELCOME_KEY = "agentlink.welcomed"

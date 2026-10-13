@@ -8,12 +8,13 @@ import type {
   SessionMessageInfo,
   V2Event,
 } from "@opencode/client"
-import { ChatView, ConfirmDialog, EmptyState, OfflineHelp, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
+import { ChatView, ConfirmDialog, EmptyState, OfflineHelp, PermissionCard, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
 import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem } from "./types"
 import { Composer } from "./composer"
 import { SettingsMenu, SettingsPanel, type Panel } from "./settings"
 import { ConnectScreen, PairSheet } from "./connect"
+import { apiPost } from "./api-post"
 import { initialConnection } from "./connection"
 import { toChatItems, timeAgo } from "./types"
 import { touchRecent } from "./recent"
@@ -50,6 +51,12 @@ export function App() {
   const [providerView, setProviderView] = useState<"oauth" | "key">("oauth")
   // workspace for the next new session (greeting-screen picker)
   const [workspace, setWorkspace] = useState("")
+  // pending permission prompts (bash etc.) for the open session
+  const [perms, setPerms] = useState<
+    Array<{ id: string; sessionID: string; action: string; resources: string[]; message?: string }>
+  >([])
+  // files attached to the next prompt
+  const [attachments, setAttachments] = useState<Array<{ uri: string; name: string }>>([])
   // service reachability: down (not running) vs auth (stale password)
   const [connError, setConnError] = useState<"down" | "auth" | null>(null)
 
@@ -67,6 +74,8 @@ export function App() {
   )
   const activeRef = useRef<string | undefined>(undefined)
   activeRef.current = activeId
+  const activeSessionRef = useRef<SessionInfo | undefined>(undefined)
+  activeSessionRef.current = activeSession
 
   /* ---------- data loading ---------- */
 
@@ -118,6 +127,42 @@ export function App() {
       setItems([])
     }
   }, [])
+
+  const compact = useCallback(async () => {
+    const sid = activeRef.current
+    if (!sid) return
+    try {
+      await client.session.compact({ sessionID: sid })
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
+  const loadPerms = useCallback(async () => {
+    const dir = activeSessionRef.current?.location?.directory
+    try {
+      const res = await client.permission.request.list(
+        dir ? { location: { directory: dir } } : undefined,
+      )
+      setPerms((res.data ?? []).filter((p) => p.sessionID === activeRef.current))
+    } catch {
+      setPerms([])
+    }
+  }, [])
+
+  const replyPerm = useCallback(
+    async (requestID: string, decision: "once" | "always" | "reject") => {
+      const sid = activeRef.current
+      if (!sid) return
+      try {
+        await apiPost(`/api/session/${sid}/permission/${requestID}/reply`, { decision })
+      } catch (err) {
+        console.error(err)
+      }
+      await loadPerms()
+    },
+    [loadPerms],
+  )
 
   const loadMeta = useCallback(async () => {
     try {
@@ -181,6 +226,11 @@ export function App() {
         return
       }
 
+      if (type === "permission.asked" || type === "permission.replied") {
+        void loadPerms()
+        return
+      }
+
       if (type === "session.execution.started" && sessionID) {
         setRunning((r) => ({ ...r, [sessionID]: true }))
         refreshSessions()
@@ -219,7 +269,11 @@ export function App() {
     }
   }, [loadSessions, loadMessages])
 
-  /* ---------- boot ---------- */
+  useEffect(() => {
+    void loadPerms()
+  }, [activeId, loadPerms])
+
+    /* ---------- boot ---------- */
 
   useEffect(() => {
     loadSessions().then((list) => {
@@ -280,7 +334,7 @@ export function App() {
     }
   }
 
-  const send = async (text: string) => {
+  const send = async (text: string, files?: Array<{ uri: string; name: string }>) => {
     let id = activeId
     if (!id) {
       // the greeting screen: the session is created by the first message
@@ -295,7 +349,13 @@ export function App() {
     }
     setRunning((r) => ({ ...r, [id]: true }))
     try {
-      await client.session.prompt({ sessionID: id, text, delivery: "steer" })
+      await client.session.prompt({
+        sessionID: id,
+        text,
+        ...(files && files.length ? { files } : {}),
+        delivery: "steer",
+      })
+      setAttachments([])
     } catch (err) {
       console.error(err)
     }
@@ -489,11 +549,22 @@ export function App() {
               streaming={busy}
               sessionDirectory={activeSession?.location?.directory}
             />
+            {perms.length > 0 && (
+              <PermissionCard
+                request={perms[0]}
+                onReply={(d: "once" | "always" | "reject") => void replyPerm(perms[0].id, d)}
+              />
+            )}
             <Composer
               disabled={!connected}
               running={busy}
               onSend={send}
               onStop={stop}
+              attachments={attachments}
+              onRemoveAttachment={(i) => setAttachments((a) => a.filter((_, j) => j !== i))}
+              onCompact={() => void compact()}
+              onPickFile={(file) => setAttachments((a) => (a.some((x) => x.uri === file.uri) ? a : [...a, file]))}
+              sessionDirectory={activeSession?.location?.directory}
               model={activeSession?.model as ModelRef | undefined}
               models={models}
               onModelPick={pickModel}
@@ -514,6 +585,10 @@ export function App() {
               running={false}
               onSend={send}
               onStop={stop}
+              attachments={attachments}
+              onRemoveAttachment={(i) => setAttachments((a) => a.filter((_, j) => j !== i))}
+              onCompact={() => void compact()}
+              onPickFile={(file) => setAttachments((a) => (a.some((x) => x.uri === file.uri) ? a : [...a, file]))}
               model={
                 pendingModel
                   ? { id: pendingModel.id, providerID: pendingModel.providerID, variant: pendingModel.variants[0]?.id }
