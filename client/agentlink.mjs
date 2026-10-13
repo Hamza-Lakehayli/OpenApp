@@ -55,12 +55,20 @@ if (!existsSync(serviceFile)) {
   console.error("Start OpenCode first: run `opencode`, or `opencode serve`.")
   process.exit(1)
 }
-const { url: serviceUrl, password } = JSON.parse(readFileSync(serviceFile, "utf8"))
-if (!serviceUrl || !password) {
-  console.error("service.json is missing url/password — is OpenCode running?")
-  process.exit(1)
+let service = readService()
+
+function readService() {
+  try {
+    const raw = JSON.parse(readFileSync(serviceFile, "utf8"))
+    if (!raw.url || !raw.password) throw new Error("missing url/password")
+    return {
+      url: raw.url.replace(/\/$/, ""),
+      basic: "Basic " + Buffer.from(`opencode:${raw.password}`).toString("base64"),
+    }
+  } catch {
+    return null
+  }
 }
-const basic = "Basic " + Buffer.from(`opencode:${password}`).toString("base64")
 
 /* ---------- the server: static + credential-injecting proxy ---------- */
 
@@ -75,28 +83,60 @@ function authorized(req, url) {
   return cookie || url.searchParams.get("key") === KEY
 }
 
+let lastServiceStart = 0
+
+function ensureOpencode() {
+  // start a background OpenCode service if none is reachable (idempotent)
+  const now = Date.now()
+  if (now - lastServiceStart < 30000) return
+  lastServiceStart = now
+  const exe = platform === "win32" ? "opencode.cmd" : "opencode"
+  try {
+    const where = spawnSync(platform === "win32" ? "where" : "which", [exe])
+    const full = where.stdout.toString().split(/\r?\n/)[0].trim()
+    if (!full) return
+    spawn(full, ["service", "start"], { detached: true, stdio: "ignore" }).unref()
+    console.log("  opencode service was down — starting it…")
+  } catch {}
+}
+
 async function proxy(req, res, url) {
-  const target =
-    serviceUrl.replace(/\/$/, "") + url.pathname + url.search
-  const headers = { ...req.headers }
-  delete headers.host
-  delete headers["accept-encoding"] // upstream compresses; undici auto-decompresses
-  delete headers.cookie
-  delete headers.origin
-  delete headers.referer
-  headers.authorization = basic
-  const chunks = []
-  for await (const chunk of req) chunks.push(chunk)
-  const body = ["GET", "HEAD"].includes(req.method)
-    ? undefined
-    : Buffer.concat(chunks)
-  const up = await fetch(target, {
-    method: req.method,
-    headers,
-    body,
-    // @ts-ignore duplex is required by undici for streaming bodies
-    duplex: "half",
-  })
+  const send = async (svc) => {
+    const target = svc.url + url.pathname + url.search
+    const headers = { ...req.headers }
+    delete headers.host
+    delete headers["accept-encoding"] // upstream compresses; undici auto-decompresses
+    delete headers.cookie
+    delete headers.origin
+    delete headers.referer
+    headers.authorization = svc.basic
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const body = ["GET", "HEAD"].includes(req.method)
+      ? undefined
+      : Buffer.concat(chunks)
+    return fetch(target, {
+      method: req.method,
+      headers,
+      body,
+      // @ts-ignore duplex is required by undici for streaming bodies
+      duplex: "half",
+    })
+  }
+  if (!service) ensureOpencode()
+  let up = service ? await send(service) : null
+  if (!up || up.status === 401 || up.status === 503) {
+    // the OpenCode service may have restarted with a new password or port —
+    // re-read service.json (and revive the service if it died), retry once
+    ensureOpencode()
+    service = readService()
+    if (service) up = await send(service)
+  }
+  if (!up) {
+    res.writeHead(502, { "content-type": "text/plain" })
+    res.end("agentlink: OpenCode service unreachable")
+    return
+  }
   const out = { ...Object.fromEntries(up.headers) }
   delete out["content-length"]
   delete out["content-encoding"] // already decompressed
@@ -107,6 +147,22 @@ async function proxy(req, res, url) {
 }
 
 let phoneUrl = null // set once ngrok reports its public URL
+
+// resolve absolute paths once - service contexts may have a thin PATH
+function resolveCmd(name) {
+  const r = spawnSync(platform === "win32" ? "where" : "which", [name])
+  return r.status === 0 ? r.stdout.toString().split(/\r?\n/)[0].trim() : null
+}
+const opencodePath = resolveCmd(platform === "win32" ? "opencode.cmd" : "opencode")
+const ngrokPath = resolveCmd("ngrok")
+
+// make sure an OpenCode service exists at boot, so the phone works
+// even before the TUI is opened (idempotent - no-op if already running)
+if (opencodePath) {
+  const s = spawn(opencodePath, ["service", "start"], { detached: true, stdio: "ignore" })
+  s.on("error", () => {})
+  s.unref()
+}
 
 const bannerHtml = readFileSync(join(here, "phone-banner.html"), "utf8")
 
@@ -172,7 +228,7 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log("")
   console.log("  agentlink running")
   console.log(`  local:     ${localUrl}`)
-  console.log(`  opencode:  ${serviceUrl}`)
+  console.log(`  opencode:  ${service ? service.url : readService()?.url ?? "?"}`)
   console.log("  opening your browser…")
 
   // the browser, already connected — a failed opener must never crash us
@@ -191,8 +247,8 @@ server.listen(PORT, "127.0.0.1", () => {
   // inspected and killed independently of the app
   const ngrok =
     platform === "win32"
-      ? spawn("cmd", ["/c", "start", "agentlink-ngrok", "cmd", "/k", "ngrok", "http", String(PORT)], { stdio: "ignore" })
-      : spawn("ngrok", ["http", String(PORT)], { stdio: "ignore" })
+      ? spawn("cmd", ["/c", "start", "agentlink-ngrok", "cmd", "/k", ngrokPath || "ngrok", "http", String(PORT)], { stdio: "ignore" })
+      : spawn(ngrokPath || "ngrok", ["http", String(PORT)], { stdio: "ignore" })
   ngrok.on("error", () => {
     console.log("")
     console.log("  ngrok not installed — phone over Wi-Fi needs the Vite dev")
