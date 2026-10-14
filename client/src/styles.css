@@ -291,6 +291,49 @@ button:disabled { cursor: default; opacity: 0.45; }
   color: #ff9179;
   font-size: 13px;
 }
+.assistant-error.is-interrupted {
+  background: var(--bubble-system, #ffffff0d);
+  border-color: #ffffff1a;
+  color: var(--faint);
+}
+.assistant-error-title { font-weight: 600; }
+.assistant-error-detail {
+  margin-top: 3px;
+  color: inherit;
+  opacity: 0.85;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* live banner for the open session: step/provider failure or retry backoff */
+.session-notice {
+  margin: 0 14px 8px;
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.session-notice.is-error {
+  background: #ef6c4d18;
+  border: 1px solid #ef6c4d40;
+  color: #ff9179;
+}
+.session-notice.is-retry {
+  background: #e6b45018;
+  border: 1px solid #e6b45040;
+  color: #ecc06a;
+}
+.session-notice.is-interrupted {
+  background: #ffffff0d;
+  border: 1px solid #ffffff1a;
+  color: var(--faint);
+}
+.session-notice-title { font-weight: 600; }
+.session-notice-detail {
+  margin-top: 3px;
+  opacity: 0.85;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 .cursor {
   display: inline-block;

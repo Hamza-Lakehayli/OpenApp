@@ -6,6 +6,8 @@ import type {
   ChatItem,
   Block,
   AgentOption,
+  ErrorInfo,
+  SessionNotice,
 } from "./types"
 import { Markdown } from "./markdown"
 import { client } from "./api"
@@ -392,7 +394,7 @@ export function ChatView({
           }
           return (
             <div key={item.id} className="row assistant">
-              {item.error && <div className="assistant-error">{item.error}</div>}
+              {item.error && <ErrorCard error={item.error} />}
               {item.blocks.map((block: Block, i: number) => {
                 const key = `${item.id}-${i}`
                 if (block.type === "text")
@@ -509,6 +511,53 @@ export function PermissionCard({
           Reject
         </button>
       </div>
+    </div>
+  )
+}
+
+/* ---------- errors: inference / provider / model failures ---------- */
+
+/** The failure attached to a finished assistant message. */
+export function ErrorCard({ error }: { error: ErrorInfo }) {
+  return (
+    <div className={`assistant-error ${error.kind === "interrupted" ? "is-interrupted" : "is-error"}`}>
+      <div className="assistant-error-title">{error.title}</div>
+      {error.detail && <div className="assistant-error-detail">{error.detail}</div>}
+    </div>
+  )
+}
+
+/**
+ * Live banner for the open session: a provider/model failure or an active
+ * retry (rate limit with backoff). Cleared by the next attempt.
+ */
+export function SessionNotice({ notice }: { notice: SessionNotice }) {
+  // tick while mounted so the "next in Ns" countdown stays honest
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (notice.kind !== "retry" || !notice.next) return
+    const t = setInterval(() => setTick((x) => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [notice.kind, notice.next])
+  if (notice.kind === "retry") {
+    const wait =
+      notice.next && notice.next > Date.now()
+        ? Math.max(1, Math.round((notice.next - Date.now()) / 1000))
+        : null
+    return (
+      <div className="session-notice is-retry">
+        <div className="session-notice-title">
+          Retrying{typeof notice.attempt === "number" ? ` · attempt ${notice.attempt}` : ""}
+          {wait ? ` · next in ${wait}s` : ""}
+        </div>
+        {notice.detail && <div className="session-notice-detail">{notice.detail}</div>}
+      </div>
+    )
+  }
+  return (
+    <div className={`session-notice ${notice.kind === "interrupted" ? "is-interrupted" : "is-error"}`}>
+      <div className="session-notice-title">{notice.title}</div>
+      {notice.detail && <div className="session-notice-detail">{notice.detail}</div>}
     </div>
   )
 }

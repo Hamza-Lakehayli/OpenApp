@@ -25,9 +25,60 @@ export type ChatItem =
       agent: string
       model?: string
       blocks: Block[]
-      error?: string
+      error?: ErrorInfo
       done: boolean
     }
+
+/** A failure the server attached to a turn: inference, provider, or abort. */
+export type ErrorInfo = {
+  kind: "error" | "interrupted"
+  title: string
+  detail?: string
+}
+
+/** A live banner for the open session: a failed step or an active retry. */
+export type SessionNotice = {
+  kind: "error" | "retry" | "interrupted"
+  title: string
+  detail?: string
+  attempt?: number
+  next?: number
+}
+
+/**
+ * Humanize the server's error object (`{ type, message, status?, response? }`).
+ * Verified against a 2.0.22 server: provider failures carry
+ * `type: "provider.auth"` plus an HTTP status and raw response body.
+ */
+export function describeError(raw: unknown): ErrorInfo {
+  const e = (raw ?? {}) as {
+    type?: string
+    message?: string
+    status?: number
+    response?: { body?: string }
+  }
+  const type = e.type || "error"
+  if (type === "aborted")
+    return { kind: "interrupted", title: "Interrupted" }
+  const titles: Record<string, string> = {
+    "provider.auth": "Provider auth error",
+    "provider.rate_limit": "Provider rate limit",
+    "provider.unknown": "Provider error",
+    "api.error": "API error",
+    "unknown": "Error",
+  }
+  const title = titles[type] ?? type.replace(/[._]/g, " ")
+  const bits: string[] = []
+  if (typeof e.status === "number") bits.push(`HTTP ${e.status}`)
+  if (e.message) bits.push(e.message)
+  let detail = bits.join(" — ")
+  const body = e.response?.body
+  if (body && body.trim()) {
+    const snippet = body.trim().replace(/\s+/g, " ")
+    detail += (detail ? "\n" : "") + snippet.slice(0, 300) + (snippet.length > 300 ? "…" : "")
+  }
+  return { kind: "error", title, ...(detail ? { detail } : {}) }
+}
 
 export type Block =
   | { type: "text"; ordinal: number; text: string }
@@ -161,7 +212,7 @@ export function toChatItems(messages: SessionMessageInfo[]): ChatItem[] {
       if (text.trim())
         items.push({ kind: "user", id: m.id, text, time: m.time.created })
     } else if (m.type === "assistant") {
-      const error = (m as { error?: { title?: string; message?: string } }).error
+      const error = (m as { error?: unknown }).error
       const blocks = blocksOf(m)
       // document cards: one per path, positioned at its latest write
       const latest = new Map<string, number>()
@@ -182,7 +233,7 @@ export function toChatItems(messages: SessionMessageInfo[]): ChatItem[] {
         agent: m.agent,
         model: modelLabel(m),
         blocks,
-        error: error ? `${error.title || "error"}: ${error.message || ""}` : undefined,
+        error: error ? describeError(error) : undefined,
         done: Boolean(m.time.completed),
       })
     } else if (m.type === "system" || m.type === "synthetic") {

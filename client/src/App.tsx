@@ -8,15 +8,15 @@ import type {
   SessionMessageInfo,
   V2Event,
 } from "@opencode/client"
-import { ChatView, ConfirmDialog, EmptyState, OfflineHelp, PermissionCard, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
+import { ChatView, ConfirmDialog, EmptyState, OfflineHelp, PermissionCard, SessionNotice, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
 import type { ConfirmRequest } from "./components"
-import type { AgentOption, ChatItem } from "./types"
+import type { AgentOption, ChatItem, SessionNotice as Notice } from "./types"
 import { Composer } from "./composer"
 import { SettingsMenu, SettingsPanel, type Panel } from "./settings"
 import { ConnectScreen, PairSheet } from "./connect"
 import { apiPost } from "./api-post"
 import { initialConnection } from "./connection"
-import { toChatItems, timeAgo } from "./types"
+import { describeError, toChatItems, timeAgo } from "./types"
 import { touchRecent } from "./recent"
 
 const DEFAULT_DIRECTORY = ""
@@ -25,6 +25,7 @@ const DEFAULT_DIRECTORY = ""
 const SUBSCRIPTION_PROVIDERS = ["claude-code", "openai"]
 
 type Running = Record<string, boolean> // sessionID -> busy
+type Notices = Record<string, Notice | undefined> // sessionID -> live error/retry banner
 
 export function App() {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
@@ -33,6 +34,8 @@ export function App() {
   const [models, setModels] = useState<ModelInfo[]>([])
   const [agents, setAgents] = useState<AgentOption[]>([])
   const [running, setRunning] = useState<Running>({})
+  // live failures for the open session: provider/model errors and retries
+  const [notices, setNotices] = useState<Notices>({})
   const [connected, setConnected] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [panel, setPanel] = useState<Panel>(null)
@@ -233,6 +236,7 @@ export function App() {
 
       if (type === "session.execution.started" && sessionID) {
         setRunning((r) => ({ ...r, [sessionID]: true }))
+        setNotices((n) => (n[sessionID] ? { ...n, [sessionID]: undefined } : n))
         refreshSessions()
         return
       }
@@ -243,8 +247,57 @@ export function App() {
         sessionID
       ) {
         setRunning((r) => ({ ...r, [sessionID]: false }))
+        if (type === "session.execution.failed") {
+          const info = describeError(data.error)
+          if (info.kind !== "interrupted")
+            setNotices((n) => ({ ...n, [sessionID]: info }))
+        }
         refreshSessions()
         if (sessionID === active) refreshActive()
+        return
+      }
+
+      // a step died mid-turn: surface it immediately (the server may still
+      // retry — the running dot stays until execution ends)
+      if (type === "session.step.failed" && sessionID) {
+        const info = describeError(data.error)
+        if (info.kind !== "interrupted")
+          setNotices((n) => ({ ...n, [sessionID]: info }))
+        if (sessionID === active) refreshActive()
+        return
+      }
+      // the next attempt began and is working — clear any failure banner
+      if (type === "session.step.started" && sessionID) {
+        setNotices((n) => (n[sessionID] ? { ...n, [sessionID]: undefined } : n))
+        return
+      }
+
+      // retry backoff (rate limit / overload): show the countdown state
+      if (type === "session.status" && sessionID) {
+        const status = (data as { status?: { type?: string; attempt?: number; message?: string; next?: number } }).status
+        if (status?.type === "retry") {
+          setNotices((n) => ({
+            ...n,
+            [sessionID]: {
+              kind: "retry",
+              title: "Retrying",
+              detail: status.message || undefined,
+              attempt: status.attempt,
+              next: status.next,
+            },
+          }))
+        } else {
+          // busy (retry succeeded) or idle — drop the retry banner
+          setNotices((n) =>
+            n[sessionID]?.kind === "retry" ? { ...n, [sessionID]: undefined } : n,
+          )
+        }
+        return
+      }
+      if (type === "session.idle" && sessionID) {
+        setNotices((n) =>
+          n[sessionID]?.kind === "retry" ? { ...n, [sessionID]: undefined } : n,
+        )
         return
       }
 
@@ -549,6 +602,7 @@ export function App() {
               streaming={busy}
               sessionDirectory={activeSession?.location?.directory}
             />
+            {notices[activeId] && <SessionNotice notice={notices[activeId]!} />}
             {perms.length > 0 && (
               <PermissionCard
                 request={perms[0]}
