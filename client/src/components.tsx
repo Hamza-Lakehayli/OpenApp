@@ -547,7 +547,8 @@ export function SessionNotice({ notice }: { notice: SessionNotice }) {
     return (
       <div className="session-notice is-retry">
         <div className="session-notice-title">
-          Retrying{typeof notice.attempt === "number" ? ` · attempt ${notice.attempt}` : ""}
+          {notice.title || "Retrying"}
+          {typeof notice.attempt === "number" ? ` · attempt ${notice.attempt}` : ""}
           {wait ? ` · next in ${wait}s` : ""}
         </div>
         {notice.detail && <div className="session-notice-detail">{notice.detail}</div>}

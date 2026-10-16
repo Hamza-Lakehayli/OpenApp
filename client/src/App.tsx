@@ -272,7 +272,24 @@ export function App() {
         return
       }
 
-      // retry backoff (rate limit / overload): show the countdown state
+      // retry backoff (rate limit / overload / transport): the server waits
+      // and re-attempts — show "Retry due · attempt N" until the next step
+      if (type === "session.retry.scheduled" && sessionID) {
+        const info = describeError(data.error)
+        setNotices((n) => ({
+          ...n,
+          [sessionID]: {
+            kind: "retry",
+            title: "Retry due",
+            detail: info.detail || info.title,
+            attempt: typeof data.attempt === "number" ? data.attempt : undefined,
+            next: typeof data.at === "number" ? data.at : undefined,
+          },
+        }))
+        return
+      }
+
+      // retry backoff via session.status (newer servers)
       if (type === "session.status" && sessionID) {
         const status = (data as { status?: { type?: string; attempt?: number; message?: string; next?: number } }).status
         if (status?.type === "retry") {

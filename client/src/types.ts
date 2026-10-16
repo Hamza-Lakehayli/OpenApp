@@ -62,9 +62,20 @@ export function describeError(raw: unknown): ErrorInfo {
     return { kind: "interrupted", title: "Interrupted" }
   const titles: Record<string, string> = {
     "provider.auth": "Provider auth error",
+    "provider.rate-limit": "Provider rate limit",
     "provider.rate_limit": "Provider rate limit",
+    "provider.quota": "Provider quota exceeded",
+    "provider.content-filter": "Content filter",
+    "provider.transport": "Provider connection error",
+    "provider.internal": "Provider internal error",
+    "provider.invalid-output": "Invalid provider output",
+    "provider.invalid-request": "Invalid request",
+    "provider.unsupported-operation": "Unsupported operation",
+    "provider.no-route": "Provider unreachable",
     "provider.unknown": "Provider error",
-    "api.error": "API error",
+    "provider.timeout": "Provider timeout",
+    "permission.rejected": "Permission rejected",
+    "tool.execution": "Tool failed",
     "unknown": "Error",
   }
   const title = titles[type] ?? type.replace(/[._]/g, " ")
