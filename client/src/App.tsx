@@ -11,7 +11,7 @@ import type {
 import { ChatView, ConfirmDialog, EmptyState, OfflineHelp, PermissionCard, SessionNotice, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
 import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem, SessionNotice as Notice } from "./types"
-import { Composer } from "./composer"
+import { Composer, type SendMode } from "./composer"
 import { SettingsMenu, SettingsPanel, type Panel } from "./settings"
 import { ConnectScreen, PairSheet } from "./connect"
 import { apiPost } from "./api-post"
@@ -215,18 +215,18 @@ export function App() {
     }
   }, [])
 
-  // failed send: same id, same text — the server dedupes if it did land
+  // failed send: same id, same text, same lane — the server dedupes if it did land
   const retrySend = useCallback(async (id: string) => {
     let sid = activeRef.current
     let pend = sid ? store.pendings(sid).find((p) => p.id === id) : undefined
     if (!pend) return
-    const { sessionID, text } = pend
+    const { sessionID, text, delivery } = pend
     sid = sessionID
     store.pendingStatus(id, "sending")
     setRunning((r) => ({ ...r, [sid]: true }))
     try {
-      await client.session.prompt({ sessionID: sid, id, text, delivery: "steer" })
-      store.pendingStatus(id, "steering")
+      await client.session.prompt({ sessionID: sid, id, text, delivery })
+      store.pendingStatus(id, delivery === "queue" ? "queued" : "steering")
     } catch {
       store.pendingStatus(id, "unknown")
       void verifySend(sid, id)
@@ -542,17 +542,17 @@ export function App() {
     setRunning((r) => ({ ...r, [id]: true }))
     // one id for bubble, inbox item, user message and any retry (server-keyed)
     const mid = genMessageId()
-    store.pending({ id: mid, sessionID: id, text, status: "sending", delivery: "steer", time: Date.now() })
+    store.pending({ id: mid, sessionID: id, text, status: "sending", delivery: sendMode, time: Date.now() })
     try {
       await client.session.prompt({
         sessionID: id,
         id: mid,
         text,
         ...(files && files.length ? { files } : {}),
-        delivery: "steer",
+        delivery: sendMode,
       })
       // accepted: events refine this to steering/queued/delivered
-      store.pendingStatus(mid, "steering")
+      store.pendingStatus(mid, sendMode === "queue" ? "queued" : "steering")
       setAttachments([])
     } catch (err) {
       console.error(err)
@@ -670,6 +670,12 @@ export function App() {
   /* ---------- render ---------- */
 
   const busy = activeId ? Boolean(running[activeId]) : false
+  // delivery lane for sends while busy: steer (next step) vs queue (when idle)
+  const [sendMode, setSendMode] = useState<SendMode>("steer")
+  useEffect(() => {
+    // a new turn or a different session starts clean at steer
+    if (!busy) setSendMode("steer")
+  }, [busy, activeId])
 
   // no connection yet: first run of the deployed app (or a bad stored one)
   if (!configured) return <ConnectScreen />
@@ -760,6 +766,8 @@ export function App() {
             <Composer
               disabled={!connected}
               running={busy}
+              sendMode={sendMode}
+              onSendMode={setSendMode}
               onSend={send}
               onStop={stop}
               attachments={attachments}
@@ -785,6 +793,8 @@ export function App() {
             <Composer
               disabled={!connected}
               running={false}
+              sendMode={sendMode}
+              onSendMode={setSendMode}
               onSend={send}
               onStop={stop}
               attachments={attachments}

@@ -7,11 +7,15 @@ import { fileNameOf } from "./files"
 
 export type { ModelInfo, ModelRef, ChatItem, AgentOption }
 
+export type SendMode = "steer" | "queue"
+
 export function Composer({
   disabled,
   running,
   onSend,
   onStop,
+  sendMode = "steer",
+  onSendMode,
   model,
   models,
   onModelPick,
@@ -28,6 +32,9 @@ export function Composer({
   running: boolean
   onSend: (text: string, files?: Array<{ uri: string; name: string }>) => void
   onStop: () => void
+  /** which lane a busy-session send joins: next step boundary or after the turn */
+  sendMode?: SendMode
+  onSendMode?: (mode: SendMode) => void
   model?: { id: string; providerID: string; variant?: string }
   models: ModelInfo[]
   onModelPick: (m: ModelInfo) => void
@@ -82,6 +89,27 @@ export function Composer({
         <AgentPicker agent={agent} agents={agents} onPick={onAgentPick} />
         <ModelPicker model={model} models={models} onPick={onModelPick} />
       </div>
+      {running && onSendMode && (
+        <button
+          className="send-mode"
+          onClick={() => onSendMode(sendMode === "steer" ? "queue" : "steer")}
+          aria-label={
+            sendMode === "steer"
+              ? "Delivery: steers the running turn at its next step. Tap to queue instead."
+              : "Delivery: queues the message until the turn is idle. Tap to steer instead."
+          }
+        >
+          {sendMode === "steer" ? (
+            <>
+              <b>Steer</b>&nbsp;· applies at the next step
+            </>
+          ) : (
+            <>
+              <b>Queue</b>&nbsp;· waits until idle
+            </>
+          )}
+        </button>
+      )}
       <div className="composer">
         <button
           className="plus-btn"
@@ -112,7 +140,9 @@ export function Composer({
             disabled
               ? "Connecting to OpenCode…"
               : running
-                ? "Steer message…"
+                ? sendMode === "queue"
+                  ? "Queue message…"
+                  : "Steer message…"
                 : "Send a message…"
           }
           disabled={disabled}
@@ -138,11 +168,11 @@ export function Composer({
         )}
         {running ? (
           <>
-            {/* steer: applies at the next step boundary — separate from Stop */}
+            {/* delivery follows the pill's mode; Stop stays separate */}
             <button
               className="send steer"
-              title="Steer message"
-              aria-label="Steer message"
+              title={sendMode === "queue" ? "Queue message" : "Steer message"}
+              aria-label={sendMode === "queue" ? "Queue message" : "Steer message"}
               disabled={!text.trim() || disabled}
               onClick={send}
             >

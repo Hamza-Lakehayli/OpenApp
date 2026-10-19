@@ -292,6 +292,22 @@ button:disabled { cursor: default; opacity: 0.45; }
 }
 .pending-retry:hover { background: var(--surface); }
 .send.steer { color: var(--accent); }
+/* delivery toggle: which lane a busy-session send joins */
+.send-mode {
+  align-self: flex-start;
+  margin: 0 0 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--faint);
+  cursor: pointer;
+  transition: background var(--anim-fast) var(--ease-standard);
+}
+.send-mode:hover { background: var(--surface-2); }
+.send-mode b { color: var(--text); font-weight: 600; }
 .bubble-system {
   max-width: 100%;
   padding: 6px 12px;
