@@ -9,3 +9,5 @@ dist-single/
 # launcher secrets + test artifacts
 .agentlink-key
 .playwright-mcp/
+
+agentlink.log
