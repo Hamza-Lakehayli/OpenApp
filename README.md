@@ -45,3 +45,19 @@ docs/      architecture report and animation profile
 
 On first launch the app walks you through picking a model (OpenCode ships
 free ones — no account needed) and connecting your subscriptions.
+
+### How chat streams
+
+Incoming messages are applied live from the server's event stream — deltas
+mutate a per-session store in place, batched per animation frame. A full
+history fetch (`limit=200&order=desc`) happens only when a session opens,
+when the event stream reconnects, when a turn reaches its terminal state,
+or when an event references a message the store hasn't seen; the merge rule
+keeps stale fetches from clobbering newer streamed text. Older messages
+beyond the 200-message window load when a reconciliation fetch happens —
+a paginated "load older" control may come later.
+
+Sent prompts get a client-generated `msg_…` id reused for the optimistic
+bubble, the inbox item, the created user message and any retry, so a send
+that reaches the server is always reconcilable by that id even when the
+response never arrives. The reducer is unit-tested (`npm test`).

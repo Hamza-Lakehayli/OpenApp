@@ -10,13 +10,22 @@ import type {
   ModelRef,
   V2Event,
 } from "@opencode/client"
+import type { PromptStatus } from "./stream"
 
-export type { SessionInfo, ModelInfo, AgentInfo, ModelRef, V2Event }
+export type { SessionInfo, ModelInfo, AgentInfo, ModelRef, V2Event, PromptStatus }
 
 export type AgentOption = { id: string; name: string; description?: string }
 
 export type ChatItem =
-  | { kind: "user"; id: string; text: string; time: number }
+  | {
+      kind: "user"
+      id: string
+      text: string
+      time: number
+      /** client-send state: shown as a stamp on the bubble until the server echoes it */
+      pending?: PromptStatus
+      attachments?: Array<{ name: string }>
+    }
   | { kind: "system"; id: string; text: string; time: number }
   | {
       kind: "assistant"

@@ -17,12 +17,47 @@ import { ConnectScreen, PairSheet } from "./connect"
 import { apiPost } from "./api-post"
 import { initialConnection } from "./connection"
 import { describeError, toChatItems, timeAgo } from "./types"
+import { store, type StoredMessage as StoreMessage, type PromptStatus } from "./stream"
 import { touchRecent } from "./recent"
 
 const DEFAULT_DIRECTORY = ""
 
 // providers whose subscriptions actually carry 5h / weekly usage windows
 const SUBSCRIPTION_PROVIDERS = ["claude-code", "openai"]
+
+/*
+   Prompt ids: the server insists on the `msg_` prefix (verified: arbitrary
+   uuids are rejected with "Expected a string starting with msg_"). One id is
+   used everywhere — optimistic bubble, inbox item, user message, retries.
+*/
+function genMessageId(): string {
+  let n = ""
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    n = crypto.randomUUID().replace(/-/g, "")
+  } else {
+    for (let i = 0; i < 40; i++) n += Math.floor(Math.random() * 36).toString(36)
+  }
+  n = n.replace(/[^a-zA-Z0-9]/g, "").slice(0, 18).toLowerCase()
+  return `msg_p${n}`
+}
+
+/** Timeline for the open session: store messages + unsent optimistic bubbles. */
+function itemsOf(sessionID: string): ChatItem[] {
+  const items = toChatItems(store.messages(sessionID) as never[])
+  const pends = store.pendings(sessionID)
+  if (pends.length === 0) return items
+  const known = new Set(items.map((i) => i.id))
+  const extra: ChatItem[] = pends
+    .filter((p) => !known.has(p.id))
+    .map((p) => ({
+      kind: "user" as const,
+      id: p.id,
+      text: p.text,
+      time: p.time,
+      pending: p.status,
+    }))
+  return [...items, ...extra].sort((a, b) => a.time - b.time)
+}
 
 type Running = Record<string, boolean> // sessionID -> busy
 type Notices = Record<string, Notice | undefined> // sessionID -> live error/retry banner
@@ -79,6 +114,8 @@ export function App() {
   activeRef.current = activeId
   const activeSessionRef = useRef<SessionInfo | undefined>(undefined)
   activeSessionRef.current = activeSession
+  // the pump's gap reconciler, mounted onto the store by the subscription effect
+  const gapRef = useRef<((sessionID: string) => void) | undefined>(undefined)
 
   /* ---------- data loading ---------- */
 
@@ -122,14 +159,79 @@ export function App() {
     return () => clearInterval(t)
   }, [connected, refreshConnection])
 
+  /*
+     The only live usage of message.list: a reconciliation snapshot.
+     Streaming itself never refetches — events mutate the store in place.
+     Snapshots fire on session open, SSE reconnect, execution terminal state,
+     and reducer gaps; the merge rule keeps older fetches from clobbering
+     newer streamed content.
+  */
   const loadMessages = useCallback(async (sessionID: string) => {
     try {
       const res = await client.message.list({ sessionID, order: "desc", limit: 200 })
-      setItems(toChatItems([...res.data].reverse()))
+      store.snapshot(sessionID, res.data as unknown as StoreMessage[])
     } catch {
-      setItems([])
+      /* keep whatever the store already shows; the pump retries on events */
     }
   }, [])
+
+  // pending prompts sitting in the server inbox (ours or from the TUI)
+  const adoptInbox = useCallback(async (sessionID: string) => {
+    try {
+      const res = await client.session.inbox.list({ sessionID })
+      store.adoptInbox(sessionID, (res as { data?: unknown }).data ?? res)
+    } catch {
+      /* inbox listing is best-effort */
+    }
+  }, [])
+
+  /*
+     A send whose transport died before an answer: the prompt may exist
+     (queued/executed) or not. Never drop the bubble — resolve it by id:
+     inbox presence → admitted; message presence → delivered; else failed.
+  */
+  const verifySend = useCallback(async (sessionID: string, id: string) => {
+    await new Promise((r) => setTimeout(r, 1500))
+    try {
+      const res = await client.session.inbox.list({ sessionID })
+      const list = ((res as { data?: unknown }).data ?? res) as Array<{
+        id?: string
+        delivery?: "steer" | "queue"
+      }>
+      const hit = list.find((x) => x.id === id)
+      if (hit) {
+        store.pendingStatus(id, hit.delivery === "queue" ? "queued" : "steering")
+        return
+      }
+      const msgs = await client.message.list({ sessionID, order: "desc", limit: 50 })
+      const found = (msgs.data ?? []).some((m) => m.id === id)
+      if (found) {
+        store.snapshot(sessionID, msgs.data as unknown as StoreMessage[]) // also sweeps the pending
+        return
+      }
+      store.pendingStatus(id, "failed")
+    } catch {
+      /* still dark — the bubble stays with the unknown stamp */
+    }
+  }, [])
+
+  // failed send: same id, same text — the server dedupes if it did land
+  const retrySend = useCallback(async (id: string) => {
+    let sid = activeRef.current
+    let pend = sid ? store.pendings(sid).find((p) => p.id === id) : undefined
+    if (!pend) return
+    const { sessionID, text } = pend
+    sid = sessionID
+    store.pendingStatus(id, "sending")
+    setRunning((r) => ({ ...r, [sid]: true }))
+    try {
+      await client.session.prompt({ sessionID: sid, id, text, delivery: "steer" })
+      store.pendingStatus(id, "steering")
+    } catch {
+      store.pendingStatus(id, "unknown")
+      void verifySend(sid, id)
+    }
+  }, [verifySend])
 
   const compact = useCallback(async () => {
     const sid = activeRef.current
@@ -195,16 +297,24 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false
-    let iterator: AsyncIterator<V2Event> | undefined
 
     const refreshSessions = debounce(async () => {
       await loadSessions()
     }, 300)
 
-    const refreshActive = debounce(async () => {
-      const id = activeRef.current
-      if (id) await loadMessages(id)
-    }, 250)
+    /*
+       Terminal-state catch-up: fetch once when a turn ends (or the SSE
+       reconnects), never per delta. This is where tool outputs, tokens and
+       the delivered user message get reconciled into the store.
+    */
+    const snapshot = (sessionID: string) => {
+      const has = store.messages(sessionID).length > 0
+      if (has || sessionID === activeRef.current) void loadMessages(sessionID)
+    }
+
+    // events referencing unknown messages: coalesced refetch for that session
+    const gapCatchup = debounce((sid: string) => snapshot(sid), 350)
+    gapRef.current = gapCatchup
 
     const start = async () => {
       try {
@@ -213,8 +323,15 @@ export function App() {
           handleEvent(event)
         }
       } catch {
-        // live-only, no auto-reconnect: back off and resubscribe
-        if (!cancelled) setTimeout(start, 2000)
+        if (!cancelled) {
+          // the stream broke: resubscribe, then reconcile what we may have missed
+          setTimeout(start, 2000)
+          const id = activeRef.current
+          if (id) {
+            void loadMessages(id)
+            void adoptInbox(id)
+          }
+        }
       }
     }
 
@@ -222,7 +339,9 @@ export function App() {
       const type = event.type as string
       const data = (event as { data?: Record<string, unknown> }).data ?? {}
       const sessionID = data.sessionID as string | undefined
-      const active = activeRef.current
+
+      // the reducer owns all content logistics for every session at once
+      store.apply(event)
 
       if (type.startsWith("session.created") || type.startsWith("session.deleted")) {
         refreshSessions()
@@ -231,6 +350,13 @@ export function App() {
 
       if (type === "permission.asked" || type === "permission.replied") {
         void loadPerms()
+        return
+      }
+
+      // a queued prompt got executed: one snapshot lands the user message
+      // (it never arrives as an event) plus its files
+      if (type === "session.inbox.delivered" && sessionID) {
+        snapshot(sessionID)
         return
       }
 
@@ -253,7 +379,7 @@ export function App() {
             setNotices((n) => ({ ...n, [sessionID]: info }))
         }
         refreshSessions()
-        if (sessionID === active) refreshActive()
+        snapshot(sessionID)
         return
       }
 
@@ -263,7 +389,6 @@ export function App() {
         const info = describeError(data.error)
         if (info.kind !== "interrupted")
           setNotices((n) => ({ ...n, [sessionID]: info }))
-        if (sessionID === active) refreshActive()
         return
       }
       // the next attempt began and is working — clear any failure banner
@@ -317,27 +442,27 @@ export function App() {
         )
         return
       }
-
-      // anything content-shaped in the open session: re-render it live
-      if (sessionID && sessionID === active) {
-        if (
-          type.startsWith("session.text.") ||
-          type.startsWith("session.reasoning.") ||
-          type.startsWith("session.tool.") ||
-          type.startsWith("session.step.") ||
-          type === "session.usage.updated" ||
-          type === "session.inbox.delivered"
-        ) {
-          refreshActive()
-        }
-      }
     }
 
     start()
     return () => {
       cancelled = true
     }
-  }, [loadSessions, loadMessages])
+  }, [loadSessions, loadMessages, adoptInbox])
+
+  // the streamed-store subscription: repaint the open chat when it changes
+  useEffect(() => {
+    store.onGap = gapRef.current
+    const repaint = (dirty: Set<string>) => {
+      const id = activeRef.current
+      if (id && dirty.has(id)) setItems(itemsOf(id))
+    }
+    const off = store.subscribe(repaint)
+    return () => {
+      off()
+      store.onGap = undefined
+    }
+  }, [])
 
   useEffect(() => {
     void loadPerms()
@@ -363,12 +488,15 @@ export function App() {
 
   useEffect(() => {
     if (activeId) {
-      setItems([])
-      loadMessages(activeId)
+      // render whatever the store already has (instant session switch) —
+      // the snapshot, if any, reconciles beneath it
+      setItems(itemsOf(activeId))
+      void loadMessages(activeId)
+      void adoptInbox(activeId)
     } else {
       setItems([])
     }
-  }, [activeId, loadMessages])
+  }, [activeId, loadMessages, adoptInbox])
 
   // using a session marks its model recently used, even without an explicit pick
   useEffect(() => {
@@ -410,26 +538,28 @@ export function App() {
       // the greeting screen: the session is created by the first message
       id = await createSession()
       if (!id) return
-    } else {
-      // optimistic bubble only for an existing chat; a fresh one loads from the server
-      setItems((prev) => [
-        ...prev,
-        { kind: "user", id: `temp-${Date.now()}`, text, time: Date.now() },
-      ])
     }
     setRunning((r) => ({ ...r, [id]: true }))
+    // one id for bubble, inbox item, user message and any retry (server-keyed)
+    const mid = genMessageId()
+    store.pending({ id: mid, sessionID: id, text, status: "sending", delivery: "steer", time: Date.now() })
     try {
       await client.session.prompt({
         sessionID: id,
+        id: mid,
         text,
         ...(files && files.length ? { files } : {}),
         delivery: "steer",
       })
+      // accepted: events refine this to steering/queued/delivered
+      store.pendingStatus(mid, "steering")
       setAttachments([])
     } catch (err) {
       console.error(err)
+      // ambiguous: the prompt may still have landed — resolve by id, never drop the bubble
+      store.pendingStatus(mid, "unknown")
+      void verifySend(id, mid)
     }
-    if (activeId === id) await loadMessages(id)
   }
 
   const stop = async () => {
@@ -618,6 +748,7 @@ export function App() {
               items={items}
               streaming={busy}
               sessionDirectory={activeSession?.location?.directory}
+              onRetry={retrySend}
             />
             {notices[activeId] && <SessionNotice notice={notices[activeId]!} />}
             {perms.length > 0 && (
@@ -715,10 +846,13 @@ export function App() {
 
 /* ---------- tiny debounce ---------- */
 
-function debounce<T extends () => Promise<void>>(fn: T, ms: number): () => void {
+function debounce<T extends (...args: never[]) => unknown>(
+  fn: T,
+  ms: number,
+): (...args: Parameters<T>) => void {
   let timer: ReturnType<typeof setTimeout> | undefined
-  return () => {
+  return (...args: Parameters<T>) => {
     if (timer) clearTimeout(timer)
-    timer = setTimeout(() => void fn(), ms)
+    timer = setTimeout(() => void fn(...args), ms)
   }
 }

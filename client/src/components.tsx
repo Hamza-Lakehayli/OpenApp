@@ -349,10 +349,12 @@ export function ChatView({
   items,
   streaming,
   sessionDirectory,
+  onRetry,
 }: {
   items: ChatItem[]
   streaming: boolean
   sessionDirectory?: string
+  onRetry?: (messageId: string) => void
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
@@ -379,9 +381,31 @@ export function ChatView({
       <div className="chat-inner">
         {items.map((item) => {
           if (item.kind === "user") {
+            // the icon-until-server state of a client send: sending, steering,
+            // queued, unknown, or failed — delivered bubbles render plain
+            const stamp =
+              item.pending === "sending"
+                ? "Sending…"
+                : item.pending === "steering"
+                  ? "Steering…"
+                  : item.pending === "queued"
+                    ? "Queued…"
+                    : item.pending === "unknown"
+                      ? "Delivery unknown…"
+                      : item.pending === "failed"
+                        ? "Failed"
+                        : undefined
             return (
-              <div key={item.id} className="row user">
-                <div className="bubble-user">{item.text}</div>
+              <div key={item.id} className={stamp ? "row user pending" : "row user"}>
+                <div className="bubble-user">
+                  {item.text}
+                  {stamp && <span className="pending-stamp">{stamp}</span>}
+                </div>
+                {item.pending === "failed" && onRetry && (
+                  <button className="pending-retry" onClick={() => onRetry(item.id)}>
+                    Retry
+                  </button>
+                )}
               </div>
             )
           }

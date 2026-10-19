@@ -109,7 +109,11 @@ export function Composer({
           value={text}
           rows={1}
           placeholder={
-            disabled ? "Connecting to OpenCode…" : "Send a message…"
+            disabled
+              ? "Connecting to OpenCode…"
+              : running
+                ? "Steer message…"
+                : "Send a message…"
           }
           disabled={disabled}
           onChange={(e) => setText(e.target.value)}
@@ -133,13 +137,26 @@ export function Composer({
           </div>
         )}
         {running ? (
-          <button className="send stop" title="Stop" onClick={onStop}>
-            ■
-          </button>
+          <>
+            {/* steer: applies at the next step boundary — separate from Stop */}
+            <button
+              className="send steer"
+              title="Steer message"
+              aria-label="Steer message"
+              disabled={!text.trim() || disabled}
+              onClick={send}
+            >
+              ↪
+            </button>
+            <button className="send stop" title="Stop" aria-label="Stop" onClick={onStop}>
+              ■
+            </button>
+          </>
         ) : (
           <button
             className="send"
             title="Send"
+            aria-label="Send a message"
             disabled={!text.trim() || disabled}
             onClick={send}
           >

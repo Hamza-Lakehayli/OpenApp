@@ -272,6 +272,26 @@ button:disabled { cursor: default; opacity: 0.45; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* a client-send still being confirmed by the server */
+.pending-stamp {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.pending-retry {
+  align-self: flex-end;
+  margin-top: 2px;
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.pending-retry:hover { background: var(--surface); }
+.send.steer { color: var(--accent); }
 .bubble-system {
   max-width: 100%;
   padding: 6px 12px;
