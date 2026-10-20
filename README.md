@@ -19,7 +19,7 @@ npm i -g opencode-ai
 opencode                 # keep it running (or: opencode serve)
 
 git clone <this repo>
-cd copilot2phone
+cd OpenApp
 ```
 
 Then just **double-click `start-agentlink.bat`** (Windows) or run
@@ -31,8 +31,8 @@ connected, and sets up the phone QR if ngrok is installed.
 - **On the phone** (same Wi-Fi): open `http://<pc-ip>:5173`
 
 The full setup guide — first-run walkthrough, providers (free models, OAuth
-subscriptions, API keys), tunneling, and shipping options (GitHub Pages or a
-single downloadable HTML file) — lives in
+subscriptions, API keys), tunneling, and the single downloadable HTML file —
+lives in
 [`client/README.md`](client/README.md).
 
 ## What's here
@@ -40,7 +40,7 @@ single downloadable HTML file) — lives in
 ```
 client/    the app (React + Vite, TypeScript)
 docs/      architecture report and animation profile
-.github/   deploy workflow: GitHub Pages + single-file Release
+.github/   release workflow: single-file Release on version tags
 ```
 
 On first launch the app walks you through picking a model (OpenCode ships

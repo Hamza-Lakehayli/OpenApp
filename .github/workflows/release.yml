@@ -1,0 +1,30 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  # The downloadable app: one self-contained HTML file on GitHub Releases.
+  # A user downloads it, double-clicks it, and connects to their own
+  # `opencode serve --hostname 0.0.0.0 --cors null`.
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+        working-directory: client
+      - run: npm run build:single
+        working-directory: client
+      - run: mv client/dist-single/index.html agentlink.html
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: agentlink.html

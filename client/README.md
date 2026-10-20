@@ -100,26 +100,14 @@ browser's localStorage (device-local — don't pair on a shared machine), and
 a pairing QR is a bearer credential — anyone who sees it has your password
 until the service restarts.
 
-## Ship it: two GitHub-only paths, nothing to host
+## Ship it: GitHub Releases, nothing to host
 
 The built app is static files — there is no backend, and no secrets ship
 inside it (each user's connection lives in their own browser). Open source
 by construction: the repo *is* the distribution. Users still run OpenCode
 itself (`npm i -g opencode-ai`) — the CLI *is* the server.
 
-### 1. GitHub Pages — people just open a URL
-
-Push to GitHub, then Settings → Pages → Source: **GitHub Actions**. Every
-push to `main` deploys the app to `https://<you>.github.io/<repo>/`
-(workflow included).
-
-One browser rule to know: a page served over **HTTPS cannot call a plain
-`http://192.168.x.x` address** (mixed content). So pair the hosted app with
-an HTTPS-reachable OpenCode — the built-in remote tunnel on OpenCode
-2.0.26+ (`opencode service set remote true` → a public HTTPS URL) or
-`tailscale serve`. Both work from anywhere, home Wi-Fi included.
-
-### 2. GitHub Releases — people download ONE file
+### GitHub Releases — people download ONE file
 
 `npm run build:single` inlines the entire app into a single ~350 KB HTML
 file (`dist-single/index.html`). Attach it to a GitHub Release (the
@@ -134,7 +122,7 @@ A `file://` page has no mixed-content restriction — verified: the
 downloaded file talks to OpenCode on the LAN with no browser barriers. This
 is the cleanest same-Wi-Fi path, and it works fully offline-as-artifact.
 
-### Setup is the same either way
+### Setup
 
 Enter the server URL + password once (the server prints both as it
 starts) — or zero typing: connect on a PC browser, **⋮ → Pair phone**, scan
