@@ -47,13 +47,79 @@ function useOutside(onClose: () => void) {
 export const isFreeModel = (m: ModelInfo) => m.providerID === "opencode"
 
 /*
-   Provider logo, loaded from the models.dev registry (the same registry
-   OpenCode uses — every providerID has a logo slug there). The SVGs draw
-   with currentColor, so they follow the theme's text color. If the fetch
-   fails (offline, unknown id) a colored monogram badge takes its place so
-   the row is never empty; failures are memoized to avoid re-requesting.
+   Provider logos from the models.dev registry (the same registry OpenCode
+   uses — every providerID has a logo slug there). The SVGs are monochrome
+   and draw with currentColor; as <img> they'd resolve to black (an <img>
+   can't see the page's CSS), so the SVG text is fetched once, sanitized,
+   inlined, and tinted with the provider's brand color. Unknown providers
+   fall back to the theme's text color; a fetch failure (offline, unknown
+   id) renders a colored monogram badge so the row is never empty.
 */
-const logoFailed = new Set<string>()
+type LogoState = { svg?: string; failed?: boolean }
+const logoCache = new Map<string, LogoState>()
+const logoWaiters = new Map<string, Promise<LogoState>>()
+
+function loadLogo(provider: string): Promise<LogoState> {
+  const hit = logoCache.get(provider)
+  if (hit) return Promise.resolve(hit)
+  let w = logoWaiters.get(provider)
+  if (!w) {
+    w = fetch(`https://models.dev/logos/${provider}.svg`)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+      .then((text) => {
+        // belt-and-suspenders sanitizing for injected markup
+        let svg = text
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+        // some slugs ship without a fill attribute (defaults to black) —
+        // root-level currentColor lets the brand color tint every path
+        svg = svg.replace(/<svg([^>]*)>/i, (_m, attrs: string) =>
+          /fill=/i.test(attrs) ? `<svg${attrs}>` : `<svg${attrs} fill="currentColor">`,
+        )
+        const st: LogoState = { svg }
+        logoCache.set(provider, st)
+        return st
+      })
+      .catch(() => {
+        const st: LogoState = { failed: true }
+        logoCache.set(provider, st)
+        return st
+      })
+      .finally(() => {
+        logoWaiters.delete(provider)
+      })
+    logoWaiters.set(provider, w)
+  }
+  return w
+}
+
+/* brand colors — approximations of each provider's official mark; the
+   default (theme text) keeps unknown providers monochrome and clean */
+const BRAND_COLOR: Record<string, string> = {
+  anthropic: "#d97757",
+  "claude-code": "#d97757",
+  nvidia: "#76b900",
+  google: "#4285f4",
+  googlegemini: "#4285f4",
+  gemini: "#4285f4",
+  openai: "#ececec",
+  "github-copilot": "#ececec",
+  github: "#ececec",
+  digitalocean: "#0080ff",
+  gitlab: "#fc6d26",
+  "amazon-bedrock": "#ff9900",
+  azure: "#0078d4",
+  deepseek: "#4d6bfe",
+  groq: "#f55036",
+  mistral: "#ff7000",
+  "mistral-ai": "#ff7000",
+  snowflake: "#29b5e8",
+  poe: "#6b5cff",
+  xai: "#ececec",
+  qwen: "#615ced",
+  meta: "#0866ff",
+  perplexity: "#20808d",
+}
 
 export function ProviderIcon({
   provider,
@@ -62,8 +128,26 @@ export function ProviderIcon({
   provider: string
   size?: number
 }) {
-  const [failed, setFailed] = useState(logoFailed.has(provider))
-  if (failed) {
+  const [state, setState] = useState<LogoState | undefined>(() =>
+    logoCache.get(provider),
+  )
+  useEffect(() => {
+    let live = true
+    const hit = logoCache.get(provider)
+    if (hit) {
+      setState(hit)
+      return
+    }
+    setState(undefined)
+    void loadLogo(provider).then((st) => {
+      if (live) setState(st)
+    })
+    return () => {
+      live = false
+    }
+  }, [provider])
+
+  if (state?.failed) {
     const letter = (provider || "?").trim().charAt(0).toUpperCase()
     const hue = [...provider].reduce((n, c) => n + c.charCodeAt(0), 0) % 360
     return (
@@ -81,19 +165,26 @@ export function ProviderIcon({
       </span>
     )
   }
+  if (!state?.svg) {
+    // loading: a quiet placeholder that keeps the row from jumping
+    return (
+      <span
+        className="provider-icn mono"
+        style={{ width: size, height: size, background: "var(--surface)" }}
+        aria-hidden="true"
+      />
+    )
+  }
   return (
-    <img
-      className="provider-icn"
-      src={`https://models.dev/logos/${provider}.svg`}
-      width={size}
-      height={size}
-      alt=""
-      loading="lazy"
-      aria-hidden="true"
-      onError={() => {
-        logoFailed.add(provider)
-        setFailed(true)
+    <span
+      className="provider-icn svg"
+      style={{
+        width: size,
+        height: size,
+        color: BRAND_COLOR[provider] ?? "var(--text)",
       }}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: state.svg }}
     />
   )
 }
