@@ -19,6 +19,7 @@ import { initialConnection } from "./connection"
 import { describeError, toChatItems, timeAgo } from "./types"
 import { store, type StoredMessage as StoreMessage, type PromptStatus } from "./stream"
 import { touchRecent } from "./recent"
+import { fileUri } from "./files"
 
 const DEFAULT_DIRECTORY = ""
 
@@ -548,7 +549,7 @@ export function App() {
         sessionID: id,
         id: mid,
         text,
-        ...(files && files.length ? { files } : {}),
+        ...(files && files.length ? { files: files.map((f) => ({ ...f, uri: fileUri(f.uri) })) } : {}),
         delivery: sendMode,
       })
       // accepted: events refine this to steering/queued/delivered

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type {
   ModelInfo,
   ModelRef,
@@ -508,6 +508,18 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null)
   // agents embed local paths as download links — clicking opens the viewer
   const [fileLink, setFileLink] = useState<string | null>(null)
+  /*
+     A multi-step turn is several assistant messages; intermediate ones
+     stay "unfinished" until the turn ends, so gating the cursor on
+     !done alone made it appear under every step. It belongs on the
+     latest assistant message only.
+  */
+  const lastAssistantId = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].kind === "assistant") return items[i].id
+    }
+    return undefined
+  }, [items])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -594,7 +606,9 @@ export function ChatView({
                   />
                 )
               })}
-              {!item.done && streaming && <span className="cursor" />}
+              {item.id === lastAssistantId && !item.done && streaming && (
+                <span className="cursor" />
+              )}
             </div>
           )
         })}

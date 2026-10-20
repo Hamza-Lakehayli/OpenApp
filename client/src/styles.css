@@ -1737,6 +1737,12 @@ select.field { appearance: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.attach-chip.uploading { color: var(--faint); border-style: dashed; }
+.attach-chip.upload-error {
+  color: var(--danger);
+  border-color: var(--danger);
+  max-width: 280px;
+}
 .attach-x {
   border: none;
   background: none;

@@ -11,3 +11,5 @@ dist-single/
 .playwright-mcp/
 
 agentlink.log
+
+uploads/

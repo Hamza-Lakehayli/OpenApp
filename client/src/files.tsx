@@ -32,6 +32,20 @@ export const extensionOf = (path: string): string =>
 export const fileNameOf = (path: string): string =>
   path.split(/[\\/]/).pop() || path
 
+/*
+   The prompt API attaches files by URI, and the server rejects plain
+   filesystem paths ("Unsupported attachment URI") — it wants file://
+   (verified on a 2.0.27 server: file:///C:/... resolves and rides into
+   the message as base64). Windows and POSIX paths both normalize.
+*/
+export const fileUri = (path: string): string => {
+  // whitelist, not a generic scheme test: a windows drive ("C:\…") would
+  // otherwise read as scheme "c:" and skip normalization
+  if (/^(file|https?|data|blob):/i.test(path)) return path
+  const norm = path.replace(/\\/g, "/")
+  return norm.startsWith("/") ? `file://${norm}` : `file:///${norm}`
+}
+
 /** One file's bytes from the desktop, as a Blob with the right mime. */
 export async function fetchFile(
   path: string,

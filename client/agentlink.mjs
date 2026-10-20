@@ -13,7 +13,7 @@
  * Access is gated by a random key: the tunnel URL without it serves nothing.
  */
 import http from "node:http"
-import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs"
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync, rmSync } from "node:fs"
 import { homedir, platform } from "node:os"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -46,6 +46,19 @@ if (!existsSync(htmlPath)) {
   }
 }
 const serveHtml = () => readFileSync(htmlPath, "utf8") // fresh on every request
+
+/* ---------- phone → PC file drop ---------- */
+
+// files picked on the phone are uploaded here, then attached to prompts by
+// their PC path (the TUI's own paste works the same way: a local temp file)
+const uploadsDir = join(here, "uploads")
+try {
+  // prune anything older than 30 days at boot
+  for (const f of readdirSync(uploadsDir)) {
+    const p = join(uploadsDir, f)
+    if (Date.now() - statSync(p).mtimeMs > 30 * 864e5) rmSync(p, { force: true })
+  }
+} catch {}
 
 /* ---------- your OpenCode service ---------- */
 
@@ -189,6 +202,30 @@ const server = http.createServer(async (req, res) => {
       }
       res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "no-store" })
       res.end(renderSVG(phoneUrl, { border: 1 }))
+      return
+    }
+    if (url.pathname === "/_agentlink/upload" && req.method === "POST") {
+      // raw bytes in, PC path out — the agent reads the file from there
+      const chunks = []
+      for await (const chunk of req) chunks.push(chunk)
+      const body = Buffer.concat(chunks)
+      if (!body.length || body.length > 64 * 1024 * 1024) {
+        res.writeHead(body.length ? 413 : 400, { "content-type": "application/json" })
+        res.end(JSON.stringify({ error: body.length ? "file too large (64MB max)" : "empty upload" }))
+        return
+      }
+      const raw = url.searchParams.get("name") || "upload.bin"
+      const safe = raw.replace(/[\\/:*?"<>|\x00-\x1f]/g, "-").slice(-120) || "upload.bin"
+      try {
+        mkdirSync(uploadsDir, { recursive: true })
+        const file = join(uploadsDir, `${Date.now().toString(36)}-${safe}`)
+        writeFileSync(file, body)
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+        res.end(JSON.stringify({ path: file, name: safe, size: body.length }))
+      } catch (err) {
+        res.writeHead(500, { "content-type": "application/json" })
+        res.end(JSON.stringify({ error: "could not save: " + String(err).slice(0, 120) }))
+      }
       return
     }
     if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {

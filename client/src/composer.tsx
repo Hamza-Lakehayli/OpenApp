@@ -4,6 +4,7 @@ import { ModelPicker, AgentPicker } from "./components"
 import { PlusIcon, XMarkIcon } from "@heroicons/react/20/solid"
 import { client } from "./api"
 import { fileNameOf } from "./files"
+import { uploadFile } from "./upload"
 
 export type { ModelInfo, ModelRef, ChatItem, AgentOption }
 
@@ -54,6 +55,25 @@ export function Composer({
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<Array<{ path: string }>>([])
   const [searching, setSearching] = useState(false)
+  // native file browser: picks from the phone/PC, uploads, attaches by path
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
+  const onFilesPicked = async (list: FileList | null) => {
+    if (!list?.length) return
+    setUploadError(null)
+    setUploading((n) => n + list.length)
+    for (const f of list) {
+      try {
+        onPickFile(await uploadFile(f))
+      } catch (err) {
+        setUploadError(`${f.name}: ${String(err).replace(/^Error:\s*/, "")}`)
+      } finally {
+        setUploading((n) => Math.max(0, n - 1))
+      }
+    }
+  }
 
   useEffect(() => {
     const el = ref.current
@@ -122,9 +142,13 @@ export function Composer({
         </button>
         {menuOpen && (
           <div className="picker-menu plus-menu">
+            <button className="picker-item" onClick={() => { setMenuOpen(false); fileRef.current?.click() }}>
+              <span className="picker-item-name">Upload file…</span>
+              <span className="picker-item-provider">from this device — saved to the PC</span>
+            </button>
             <button className="picker-item" onClick={() => { setMenuOpen(false); setPickerOpen(true) }}>
-              <span className="picker-item-name">Attach file...</span>
-              <span className="picker-item-provider">search the workspace</span>
+              <span className="picker-item-name">Workspace file…</span>
+              <span className="picker-item-provider">search the project on the PC</span>
             </button>
             <button className="picker-item" onClick={() => { setMenuOpen(false); onCompact() }}>
               <span className="picker-item-name">Compact conversation</span>
@@ -132,6 +156,16 @@ export function Composer({
             </button>
           </div>
         )}
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            void onFilesPicked(e.target.files)
+            e.target.value = "" // allow re-picking the same file
+          }}
+        />
         <textarea
           ref={ref}
           value={text}
@@ -154,7 +188,7 @@ export function Composer({
             }
           }}
         />
-        {attachments.length > 0 && (
+        {(attachments.length > 0 || uploading > 0 || uploadError) && (
           <div className="attach-row">
             {attachments.map((a, i) => (
               <span key={a.uri} className="attach-chip">
@@ -164,6 +198,15 @@ export function Composer({
                 </button>
               </span>
             ))}
+            {uploading > 0 && <span className="attach-chip uploading">uploading {uploading}…</span>}
+            {uploadError && (
+              <span className="attach-chip upload-error" title={uploadError}>
+                {uploadError.length > 42 ? uploadError.slice(0, 42) + "…" : uploadError}
+                <button className="attach-x" aria-label="Dismiss" onClick={() => setUploadError(null)}>
+                  <XMarkIcon />
+                </button>
+              </span>
+            )}
           </div>
         )}
         {running ? (

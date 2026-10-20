@@ -54,6 +54,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": { target: service.target, headers: authHeaders, changeOrigin: false },
         "/auth": { target: service.target, headers: authHeaders, changeOrigin: false },
+        // file uploads go to the launcher, not OpenCode (it has no upload API)
+        "/_agentlink": { target: "http://localhost:8170", changeOrigin: false },
       },
     },
   }
