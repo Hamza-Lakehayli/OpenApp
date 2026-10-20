@@ -813,6 +813,39 @@ button.tree-name:hover { color: var(--text); text-decoration: underline; }
   border-radius: 8px;
   text-align: left;
 }
+/* rows with a leading provider logo: icon left, text stack right */
+.picker-item.has-icn {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.picker-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.picker-item-body .picker-item-name,
+.picker-item-body .picker-item-provider {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-icn {
+  flex: none;
+  border-radius: 4px;
+  object-fit: contain;
+  color: var(--text); /* the svgs draw with currentColor */
+}
+.provider-icn.mono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 5px;
+}
 .picker-item:hover { background: var(--surface-2); }
 .picker-item.selected { background: var(--accent-dim); }
 .picker-item-name { font-size: 13.5px; color: var(--text); }
@@ -988,7 +1021,15 @@ button.tree-name:hover { color: var(--text); text-decoration: underline; }
   flex-wrap: wrap;
 }
 .panel-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.panel-row-name { font-size: 13.5px; font-weight: 550; color: var(--text); }
+.panel-row-name {
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
 .panel-row-sub {
   font-size: 11.5px;
   color: var(--faint);
@@ -1417,6 +1458,9 @@ select.field { appearance: none; }
   font-weight: 600;
   font-family: var(--mono);
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 .apikey-target span {
   color: var(--faint);

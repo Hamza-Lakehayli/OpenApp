@@ -6,6 +6,7 @@
  */
 import { useMemo, useState } from "react"
 import { client } from "./api"
+import { ProviderIcon } from "./components"
 
 type Integration = {
   id: string
@@ -80,7 +81,7 @@ export function ApiKeySection({ integrations }: { integrations: Integration[] })
               {results.map((i) => (
                 <button
                   key={i.id}
-                  className="picker-item"
+                  className="picker-item has-icn"
                   onClick={() => {
                     setSelected(i)
                     setQuery("")
@@ -88,8 +89,11 @@ export function ApiKeySection({ integrations }: { integrations: Integration[] })
                     setError(null)
                   }}
                 >
-                  <span className="picker-item-name">{i.name}</span>
-                  <span className="picker-item-provider">{i.id}</span>
+                  <ProviderIcon provider={i.id} size={18} />
+                  <span className="picker-item-body">
+                    <span className="picker-item-name">{i.name}</span>
+                    <span className="picker-item-provider">{i.id}</span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -98,6 +102,7 @@ export function ApiKeySection({ integrations }: { integrations: Integration[] })
       ) : (
         <div className="apikey-form">
           <div className="apikey-target">
+            <ProviderIcon provider={selected.id} size={16} />
             {selected.name} <span>{selected.id}</span>
           </div>
           <input

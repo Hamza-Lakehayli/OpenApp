@@ -46,6 +46,58 @@ function useOutside(onClose: () => void) {
  */
 export const isFreeModel = (m: ModelInfo) => m.providerID === "opencode"
 
+/*
+   Provider logo, loaded from the models.dev registry (the same registry
+   OpenCode uses — every providerID has a logo slug there). The SVGs draw
+   with currentColor, so they follow the theme's text color. If the fetch
+   fails (offline, unknown id) a colored monogram badge takes its place so
+   the row is never empty; failures are memoized to avoid re-requesting.
+*/
+const logoFailed = new Set<string>()
+
+export function ProviderIcon({
+  provider,
+  size = 18,
+}: {
+  provider: string
+  size?: number
+}) {
+  const [failed, setFailed] = useState(logoFailed.has(provider))
+  if (failed) {
+    const letter = (provider || "?").trim().charAt(0).toUpperCase()
+    const hue = [...provider].reduce((n, c) => n + c.charCodeAt(0), 0) % 360
+    return (
+      <span
+        className="provider-icn mono"
+        style={{
+          width: size,
+          height: size,
+          fontSize: Math.round(size * 0.55),
+          background: `hsl(${hue} 30% 34%)`,
+        }}
+        aria-hidden="true"
+      >
+        {letter}
+      </span>
+    )
+  }
+  return (
+    <img
+      className="provider-icn"
+      src={`https://models.dev/logos/${provider}.svg`}
+      width={size}
+      height={size}
+      alt=""
+      loading="lazy"
+      aria-hidden="true"
+      onError={() => {
+        logoFailed.add(provider)
+        setFailed(true)
+      }}
+    />
+  )
+}
+
 export function ModelPicker({
   model,
   models,
@@ -72,20 +124,24 @@ export function ModelPicker({
   const renderItem = (m: ModelInfo) => (
     <button
       key={`${m.providerID}/${m.id}`}
-      className={"picker-item" + (isCurrent(m) ? " selected" : "")}
+      className={"picker-item has-icn" + (isCurrent(m) ? " selected" : "")}
       onClick={() => {
         onPick(m)
         setOpen(false)
       }}
     >
-      <span className="picker-item-name">{m.name}</span>
-      <span className="picker-item-provider">{m.providerID}</span>
+      <ProviderIcon provider={m.providerID} size={18} />
+      <span className="picker-item-body">
+        <span className="picker-item-name">{m.name}</span>
+        <span className="picker-item-provider">{m.providerID}</span>
+      </span>
     </button>
   )
 
   return (
     <div className="picker" ref={ref}>
       <button className="picker-btn" onClick={() => setOpen(!open)}>
+        {current && <ProviderIcon provider={current.providerID} size={14} />}
         {label}
         <span className="picker-caret">▾</span>
       </button>

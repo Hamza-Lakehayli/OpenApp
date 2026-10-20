@@ -14,6 +14,7 @@ import {
 } from "@heroicons/react/20/solid"
 import { FilesPanel } from "./files-panel"
 import { ApiKeySection } from "./api-key"
+import { ProviderIcon } from "./components"
 
 /* ---------- primitives ---------- */
 
@@ -873,7 +874,10 @@ export function ProvidersPanel({
             <div key={i.id} className="panel-row">
               <StatusDot status={connected ? "connected" : ""} />
               <div className="panel-row-main">
-                <span className="panel-row-name">{i.name}</span>
+                <span className="panel-row-name">
+                  <ProviderIcon provider={i.id} size={16} />
+                  {i.name}
+                </span>
                 <span className="panel-row-sub">
                   {connected
                     ? "connected"
