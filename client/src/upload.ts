@@ -31,8 +31,7 @@ export function uploadFile(
           data = {}
         }
         if (xhr.status === 200 && data.path) {
-          const name = data.path.split(/[\\/]/).pop() || file.name
-          resolve({ uri: data.path, name })
+          resolve({ uri: data.path, name: file.name })
         } else {
           reject(new Error(data.error || `upload failed (HTTP ${xhr.status})`))
         }

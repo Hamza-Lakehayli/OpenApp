@@ -158,7 +158,7 @@ export function Composer({
           ))}
           {attachments.map((a, i) => (
             <span key={a.uri} className="attach-chip">
-              {fileNameOf(a.name || a.uri)}
+              <span className="chip-name">{fileNameOf(a.name || a.uri)}</span>
               <button className="attach-x" aria-label="Remove" onClick={() => onRemoveAttachment(i)}>
                 <XMarkIcon />
               </button>
@@ -166,7 +166,9 @@ export function Composer({
           ))}
           {uploadError && (
             <span className="attach-chip upload-error" title={uploadError}>
-              {uploadError.length > 42 ? uploadError.slice(0, 42) + "…" : uploadError}
+              <span className="chip-name">
+                {uploadError.length > 42 ? uploadError.slice(0, 42) + "…" : uploadError}
+              </span>
               <button className="attach-x" aria-label="Dismiss" onClick={() => setUploadError(null)}>
                 <XMarkIcon />
               </button>
