@@ -7,6 +7,39 @@
    so the worker asks the page over a message channel and waits briefly.
 */
 const CHECK_TIMEOUT = 350
+const SHELL = "shell-v1"
+
+/*
+   Shell cache: reopen-the-app should not wait for a tunnel round trip.
+   Serve the last known app shell instantly, revalidate from the network
+   in the background; the app's build-hash check handles "was that stale?".
+*/
+self.addEventListener("fetch", (e) => {
+  const req = e.request
+  if (req.method !== "GET") return
+  const url = new URL(req.url)
+  if (url.origin !== location.origin) return
+  if (url.pathname === "/sw.js" || url.pathname.startsWith("/_agentlink/")) return
+  const cacheable =
+    req.mode === "navigate" ||
+    /\.(js|css|html|woff2?|png|jpe?g|svg|ico|webmanifest)$/.test(url.pathname)
+  if (!cacheable) return
+  e.respondWith(
+    (async () => {
+      const cache = await caches.open(SHELL)
+      // normalized string key: navigate Requests don't round-trip as keys
+      const hit = await cache.match(url.href, { ignoreVary: true })
+      // network refresher: fills/updates the cache, survives offline
+      const fresh = fetch(req)
+        .then((res) => {
+          if (res && res.ok) return cache.put(url.href, res.clone()).then(() => res)
+          return res
+        })
+        .catch(() => hit)
+      return hit || fresh
+    })(),
+  )
+})
 
 self.addEventListener("push", (e) => {
   let d = {}

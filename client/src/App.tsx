@@ -118,6 +118,9 @@ export function App() {
   // the push worker asks which session is on screen before suppressing a
   // nudge (scoped suppression: only the session being read stays silent)
   useEffect(() => {
+    // registered here (not just via the Notifications panel) so the shell
+    // cache covers every device that ever opens the app
+    navigator.serviceWorker?.register("/sw.js").catch(() => {})
     const onMessage = (e: MessageEvent) => {
       if ((e.data as { type?: string })?.type !== "which-session?") return
       const port = e.ports?.[0]
