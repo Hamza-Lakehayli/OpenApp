@@ -21,6 +21,7 @@ import { spawn, spawnSync } from "node:child_process"
 import { Readable } from "node:stream"
 import { randomUUID } from "node:crypto"
 import { renderANSI, renderSVG } from "uqr"
+import webpush from "web-push"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT || 8170)
@@ -59,6 +60,212 @@ try {
     if (Date.now() - statSync(p).mtimeMs > 30 * 864e5) rmSync(p, { force: true })
   }
 } catch {}
+
+/* ---------- push: nudge the phone when the agent needs you ---------- */
+
+/*
+   Web Push, served by the launcher itself: the OpenCode session events say
+   when a turn chain ends or a permission needs a decision; the launcher
+   forwards those moments to every subscribed device via a VAPID-signed
+   push (the page does NOT need to be open — the launcher holds its own
+   event stream). Keys + subscriptions live in .agentlink-push.json
+   (gitignored).
+
+   The watcher reads its events from the service on the next tick (the
+   service block below initializes on module load, so a direct read here
+   would see the binding before init).
+*/
+
+const pushFile = join(here, ".agentlink-push.json")
+let pushState = (() => {
+  try {
+    return JSON.parse(readFileSync(pushFile, "utf8"))
+  } catch {
+    return {}
+  }
+})()
+if (!pushState.keys?.privateKey) {
+  pushState.keys = webpush.generateVAPIDKeys()
+  pushState.subs = pushState.subs ?? []
+  writeFileSync(pushFile, JSON.stringify(pushState))
+}
+webpush.setVapidDetails(
+  "mailto:agentlink@localhost",
+  pushState.keys.publicKey,
+  pushState.keys.privateKey,
+)
+
+function savePush() {
+  writeFileSync(pushFile, JSON.stringify(pushState))
+}
+
+// every subscription's push payload carries the tunnel URL to open;
+// no tunnel, no point in pushing
+async function sendPush(title, body, tag) {
+  if (!phoneUrl || !pushState.subs?.length) {
+    console.log(`  push skipped: phoneUrl=${!!phoneUrl} subs=${pushState.subs?.length ?? 0}`)
+    return
+  }
+  console.log(`  push → "${title}" → ${pushState.subs.length} device(s): ${body.slice(0, 60)}`)
+  const payload = JSON.stringify({ title, body, url: phoneUrl, tag })
+  for (const s of [...pushState.subs]) {
+    // FCM blips (TLS drops etc.) — one retry before giving up on a device
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await webpush.sendNotification(s, payload)
+        console.log(`  push ok → ${s.endpoint.slice(0, 60)}`)
+        break
+      } catch (err) {
+        // 404/410: gone — unsubscribe it; a bad key blob can never send either
+        const gone =
+          err.statusCode === 404 ||
+          err.statusCode === 410 ||
+          /subscription (p256dh|auth)|used as the key|public key/i.test(String(err.message ?? err))
+        if (gone) {
+          console.log(`  push: pruning unreachable sub (${err.statusCode ?? err.message?.slice(0, 40)})`)
+          pushState.subs = pushState.subs.filter((x) => x.endpoint !== s.endpoint)
+          savePush()
+          break
+        }
+        if (attempt === 1) {
+          console.log(`  push failed (still) (${err.statusCode}): ${String(err.message ?? err).slice(0, 110)}`)
+        } else {
+          await new Promise((r) => setTimeout(r, 1500))
+        }
+      }
+    }
+  }
+}
+
+/* the watcher: one SSE connection to the OpenCode service, mirrored
+   logic from the app — execution.* spans = "the agent is working",
+   its end = "waiting for you", permission.asked = "needs approval" */
+
+const busy = new Map() // sessionID → true (execution span running)
+const idleTimers = new Map() // sessionID → notify delay handle (queued turns
+// may start right after an execution ends; the delay absorbs the ping-pong)
+
+function trackEvent(type, data) {
+  const sid = data?.sessionID ?? data?.properties?.sessionID
+  if (!sid) return
+  if (type === "session.execution.started") {
+    const t = idleTimers.get(sid)
+    if (t) { clearTimeout(t); idleTimers.delete(sid) }
+    busy.set(sid, Date.now())
+    return
+  }
+  const ended =
+    type === "session.execution.succeeded" ||
+    type === "session.execution.failed" ||
+    type === "session.execution.interrupted"
+  if (ended && busy.has(sid)) {
+    console.log(`  push: turn chain ended (${type}) ${sid.slice(-8)}`)
+    busy.delete(sid)
+    idleTimers.set(
+      sid,
+      setTimeout(() => {
+        idleTimers.delete(sid)
+        notifyTurnEnd(sid)
+      }, 1500),
+    )
+    return
+  }
+  if (type === "permission.asked") {
+    void notifyAsk(sid, data)
+  }
+}
+
+async function sessionTitle(sid) {
+  try {
+    const svc = service ?? readService()
+    const r = await fetch(`${svc.url}/api/session/${sid}`, {
+      headers: { authorization: svc.basic },
+    })
+    return (await r.json())?.data?.title ?? "OpenCode"
+  } catch {
+    return "OpenCode"
+  }
+}
+
+async function lastText(sid) {
+  try {
+    const svc = service ?? readService()
+    const r = await fetch(`${svc.url}/api/session/${sid}/message`, {
+      headers: { authorization: svc.basic },
+    })
+    const list = (await r.json())?.data ?? []
+    // order isn't chronological in practice — find the newest assistant text
+    const last = list
+      .filter((m) => m.type === "assistant")
+      .sort((a, b) => (a?.time?.created ?? 0) - (b?.time?.created ?? 0))
+      .pop()
+    if (!last) return ""
+    // content parts rule the wire ({type:"text",text}); keep parts as fallback
+    const fromParts = (last.content ?? last.parts ?? [])
+      .filter((p) => p.type === "text")
+      .map((p) => p.text)
+      .join(" ")
+    return (fromParts || last.payload?.text || "").slice(0, 140)
+  } catch {
+    return ""
+  }
+}
+
+async function notifyTurnEnd(sid) {
+  const [title, snippet] = await Promise.all([sessionTitle(sid), lastText(sid)])
+  sendPush(
+    title,
+    snippet ? `Finished — ${snippet}` : "Finished — waiting for you",
+    "turn:" + sid,
+  )
+}
+
+async function notifyAsk(sid, data) {
+  const p = data?.properties ?? data ?? {}
+  const what =
+    [p.permission?.title, p.title, p.permission?.type, p.type]
+      .find((x) => typeof x === "string" && x.trim()) ?? "your approval"
+  sendPush(await sessionTitle(sid), `Needs ${what}`, "ask:" + sid)
+}
+
+function watchEvents() {
+  const svc = service ?? readService()
+  if (!svc) {
+    setTimeout(watchEvents, 8000)
+    return
+  }
+  // NOTE: the service routes everything under /api (the proxy forwards the
+  // prefix untouched — /api/session here, not /session)
+  fetch(`${svc.url}/api/event`, {
+    headers: { authorization: svc.basic, accept: "text/event-stream" },
+  }).then(async (up) => {
+    if (!up.ok || !up.body) throw new Error("event stream unavailable")
+    console.log("  watching sessions for ask-me / turn-end moments…")
+    const reader = up.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ""
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      let i
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i)
+        buf = buf.slice(i + 1)
+        if (!line.startsWith("data:")) continue
+        try {
+          const ev = JSON.parse(line.slice(5).trim())
+          trackEvent(ev.type, ev.properties ?? ev.payload ?? ev.data ?? {})
+        } catch {}
+      }
+    }
+  }).catch(() => {}).finally(() => {
+    // the service can restart (new port/password) — re-watch
+    setTimeout(watchEvents, 5000)
+  })
+}
+// next tick so the service block below has booted
+setTimeout(watchEvents, 1500)
 
 /* ---------- your OpenCode service ---------- */
 
@@ -226,6 +433,62 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(500, { "content-type": "application/json" })
         res.end(JSON.stringify({ error: "could not save: " + String(err).slice(0, 120) }))
       }
+      return
+    }
+    if (url.pathname === "/_agentlink/build") {
+      // for the app's new-build-on-reopen check (stale chrome boot caches)
+      const html = serveHtml()
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+      res.end(JSON.stringify({
+        hash: [...Buffer.from(html)].reduce((a, b) => (a * 33 + b) & 0xffffffff, 17).toString(36),
+      }))
+      return
+    }
+    if (url.pathname === "/_agentlink/push/vapid") {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+      res.end(JSON.stringify({ publicKey: pushState.keys.publicKey }))
+      return
+    }
+    if (url.pathname === "/_agentlink/push/subscribe" && req.method === "POST") {
+      const chunks = []
+      for await (const chunk of req) chunks.push(chunk)
+      try {
+        const { subscription } = JSON.parse(Buffer.concat(chunks).toString())
+        if (!subscription?.endpoint) throw new Error("bad subscription")
+        // one subscription per endpoint (re-subscribes refresh it)
+        pushState.subs = pushState.subs.filter((x) => x.endpoint !== subscription.endpoint)
+        pushState.subs.push(subscription)
+        savePush()
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+        res.end(JSON.stringify({ ok: true, count: pushState.subs.length }))
+      } catch (err) {
+        res.writeHead(400, { "content-type": "application/json" })
+        res.end(JSON.stringify({ error: String(err).slice(0, 120) }))
+      }
+      return
+    }
+    if (url.pathname === "/_agentlink/push/unsubscribe" && req.method === "POST") {
+      const chunks = []
+      for await (const chunk of req) chunks.push(chunk)
+      try {
+        const { endpoint } = JSON.parse(Buffer.concat(chunks).toString())
+        pushState.subs = pushState.subs.filter((x) => x.endpoint !== endpoint)
+        savePush()
+      } catch {}
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+      res.end(JSON.stringify({ ok: true, count: pushState.subs?.length ?? 0 }))
+      return
+    }
+    if (url.pathname === "/_agentlink/push/test" && req.method === "POST") {
+      await sendPush("Agentlink test", "If you can read this, push works end to end.", "test")
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+      res.end(JSON.stringify({ ok: true, count: pushState.subs.length }))
+      return
+    }
+    if (url.pathname === "/sw.js") {
+      // the push service worker — plain file, no build step
+      res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" })
+      res.end(readFileSync(join(here, "sw.js")))
       return
     }
     if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {

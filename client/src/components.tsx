@@ -11,6 +11,7 @@ import type {
 } from "./types"
 import { Markdown } from "./markdown"
 import { client } from "./api"
+import { store } from "./stream"
 import { DocumentIcon, XMarkIcon } from "@heroicons/react/20/solid"
 import { recentModels } from "./recent"
 import { downloadFile, FileViewer, fileNameOf } from "./files"
@@ -664,6 +665,77 @@ export function UsageChip({ sessions }: { sessions: SessionInfo[] }) {
       5h {fmt(fiveH)} · 7d {fmt(week)}
     </span>
   )
+}
+/* ---------- header context meter ---------- */
+
+/*
+   How full the conversation's context window is: the LAST assistant
+   message carries the token accounting of the most recent model call —
+   everything it read (input + cache) plus what it wrote back. Against
+   the model's context limit that is the fill; it follows whichever
+   model/variant produced the last step, and shows nothing before the
+   first turn has streamed (no samples yet).
+*/
+export function ContextMeter({
+  sessionID,
+  model,
+  models,
+}: {
+  sessionID: string
+  model?: { id?: string; providerID?: string; variant?: string } | null
+  models: ModelInfo[]
+}) {
+  // the store drives the repaint: subscriptions fire after each batch
+  const [, bump] = useState(0)
+  useEffect(() => {
+    const off = store.subscribe(() => bump((n) => n + 1))
+    return off
+  }, [])
+
+  const msgs = store.messages(sessionID)
+  let tok: TokShape | undefined
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].type === "assistant" && msgs[i].tokens) {
+      tok = msgs[i].tokens as TokShape
+      break
+    }
+  }
+  if (!tok) return null
+  const used =
+    (tok.input ?? 0) +
+    (tok.output ?? 0) +
+    (tok.reasoning ?? 0) +
+    (tok.cache?.read ?? 0) +
+    (tok.cache?.write ?? 0)
+  if (!used) return null
+  const m = models.find(
+    (x) => x.id === model?.id && x.providerID === model?.providerID,
+  )
+  const limit = m?.limit?.context
+  const fmt = (t: number): string =>
+    t >= 1e6 ? (t / 1e6).toFixed(limit && limit >= 1e6 ? 0 : 1) + "M"
+      : t >= 1e3 ? (t / 1e3).toFixed(0) + "k"
+        : String(t)
+  const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : null
+  const warn = pct != null && pct >= 80
+  return (
+    <span
+      className={"ctx-chip" + (warn ? " warn" : "")}
+      title={`Context of this session: ${fmt(used)}${limit ? ` of ${fmt(limit)} tokens (${pct}%)` : " tokens (window size unknown)"}. Ticks up as the conversation grows; compaction frees it.`}
+    >
+      <span className="ctx-bar">
+        {limit && <i style={{ width: `${pct}%` }} />}
+      </span>
+      {pct != null ? `${pct}%` : "ctx"} · {fmt(used)}
+      {limit ? `/${fmt(limit)}` : ""}
+    </span>
+  )
+}
+type TokShape = {
+  input?: number
+  output?: number
+  reasoning?: number
+  cache?: { read?: number; write?: number }
 }
 /* ---------- permission prompt: the script + the decision ---------- */
 

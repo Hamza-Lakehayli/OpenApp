@@ -8,10 +8,11 @@ import type {
   SessionMessageInfo,
   V2Event,
 } from "@opencode/client"
-import { ChatView, ConfirmDialog, EmptyState, OfflineHelp, PermissionCard, SessionNotice, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
+import { ChatView, ConfirmDialog, ContextMeter, EmptyState, OfflineHelp, PermissionCard, SessionNotice, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
 import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem, SessionNotice as Notice } from "./types"
 import { Composer, type SendMode } from "./composer"
+import { watchBuild } from "./appver"
 import { SettingsMenu, SettingsPanel, type Panel } from "./settings"
 import { ConnectScreen, PairSheet } from "./connect"
 import { apiPost } from "./api-post"
@@ -113,6 +114,21 @@ export function App() {
   )
   const activeRef = useRef<string | undefined>(undefined)
   activeRef.current = activeId
+
+  // the push worker asks which session is on screen before suppressing a
+  // nudge (scoped suppression: only the session being read stays silent)
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if ((e.data as { type?: string })?.type !== "which-session?") return
+      const port = e.ports?.[0]
+      if (port) port.postMessage({ sessionID: activeRef.current ?? null })
+    }
+    navigator.serviceWorker?.addEventListener("message", onMessage)
+    return () => navigator.serviceWorker?.removeEventListener("message", onMessage)
+  }, [])
+
+  // reclaiming the app always runs the newest shipped build
+  useEffect(watchBuild, [])
   const activeSessionRef = useRef<SessionInfo | undefined>(undefined)
   activeSessionRef.current = activeSession
   // the pump's gap reconciler, mounted onto the store by the subscription effect
@@ -718,6 +734,13 @@ export function App() {
           </div>
           <div className="header-meta">
             {busy && <span className="running-dot" title="Working" />}
+            {activeSession && (
+              <ContextMeter
+                sessionID={activeSession.id}
+                model={activeSession.model}
+                models={models}
+              />
+            )}
             {activeSession &&
               SUBSCRIPTION_PROVIDERS.indexOf(activeSession.model?.providerID ?? "") !== -1 && (
                 <UsageChip
