@@ -382,7 +382,7 @@ button:disabled { cursor: default; opacity: 0.45; }
 }
 
 /* markdown */
-.md { max-width: 100%; }
+.md { max-width: 100%; overflow-wrap: break-word; min-width: 0; }
 .md p { margin: 0 0 10px; }
 .md p:last-child { margin-bottom: 0; }
 .md h1, .md h2, .md h3, .md h4 {
@@ -408,6 +408,9 @@ button:disabled { cursor: default; opacity: 0.45; }
   background: var(--surface-2);
   padding: 2px 5px;
   border-radius: 5px;
+  /* long paths/urls in inline code used to shove rows wider than the screen */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .md a { color: #4c9ffe; }
 
@@ -1642,6 +1645,34 @@ select.field { appearance: none; }
 }
 
 /* ---------- header usage chip ---------- */
+
+.ctx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.ctx-bar {
+  width: 34px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+  flex: none;
+}
+.ctx-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--text);
+  transition: width 0.4s;
+}
+/* cross the 80% line and the meter starts warning */
+.ctx-chip.warn .ctx-bar i { background: var(--danger); }
+.ctx-chip.warn { color: var(--danger); }
 
 .usage-chip {
   font-size: 11px;
