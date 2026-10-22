@@ -1717,10 +1717,13 @@ select.field { appearance: none; }
 .plus-btn:disabled { opacity: 0.4; cursor: default; }
 .plus-menu { position: absolute; bottom: calc(100% + 6px); top: auto; left: 0; }
 .attach-row {
+  /* chips stack ABOVE the composer: inside the flex row they squeezed the
+     textarea to nothing on phones (untypeable after attaching) */
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding: 0 4px 6px;
+  max-width: 100%;
 }
 .attach-chip {
   display: inline-flex;

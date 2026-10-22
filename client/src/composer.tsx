@@ -130,6 +130,27 @@ export function Composer({
           )}
         </button>
       )}
+      {(attachments.length > 0 || uploading > 0 || uploadError) && (
+        <div className="attach-row">
+          {attachments.map((a, i) => (
+            <span key={a.uri} className="attach-chip">
+              {fileNameOf(a.name || a.uri)}
+              <button className="attach-x" aria-label="Remove" onClick={() => onRemoveAttachment(i)}>
+                <XMarkIcon />
+              </button>
+            </span>
+          ))}
+          {uploading > 0 && <span className="attach-chip uploading">uploading {uploading}…</span>}
+          {uploadError && (
+            <span className="attach-chip upload-error" title={uploadError}>
+              {uploadError.length > 42 ? uploadError.slice(0, 42) + "…" : uploadError}
+              <button className="attach-x" aria-label="Dismiss" onClick={() => setUploadError(null)}>
+                <XMarkIcon />
+              </button>
+            </span>
+          )}
+        </div>
+      )}
       <div className="composer">
         <button
           className="plus-btn"
@@ -188,27 +209,6 @@ export function Composer({
             }
           }}
         />
-        {(attachments.length > 0 || uploading > 0 || uploadError) && (
-          <div className="attach-row">
-            {attachments.map((a, i) => (
-              <span key={a.uri} className="attach-chip">
-                {fileNameOf(a.name || a.uri)}
-                <button className="attach-x" aria-label="Remove" onClick={() => onRemoveAttachment(i)}>
-                  <XMarkIcon />
-                </button>
-              </span>
-            ))}
-            {uploading > 0 && <span className="attach-chip uploading">uploading {uploading}…</span>}
-            {uploadError && (
-              <span className="attach-chip upload-error" title={uploadError}>
-                {uploadError.length > 42 ? uploadError.slice(0, 42) + "…" : uploadError}
-                <button className="attach-x" aria-label="Dismiss" onClick={() => setUploadError(null)}>
-                  <XMarkIcon />
-                </button>
-              </span>
-            )}
-          </div>
-        )}
         {running ? (
           <>
             {/* delivery follows the pill's mode; Stop stays separate */}
