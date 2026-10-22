@@ -24,7 +24,14 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   gif: "image/gif",
   webp: "image/webp",
   svg: "image/svg+xml",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
 }
+
+/* extensions the browser can render in an <img> — previewable attachments */
+const IMG_EXTENSIONS = new Set([
+  "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico",
+])
 
 export const extensionOf = (path: string): string =>
   path.split(".").pop()?.toLowerCase() ?? ""
@@ -178,6 +185,8 @@ export function FileViewer({
         {blobUrl != null &&
           (ext === "pdf" ? (
             <iframe className="viewer-frame" src={blobUrl} title={display} />
+          ) : IMG_EXTENSIONS.has(ext) ? (
+            <img className="viewer-img" src={blobUrl} alt={display} />
           ) : (
             <div className="viewer-binary">
               <p>This file type can't be previewed.</p>

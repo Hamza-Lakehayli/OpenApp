@@ -694,6 +694,13 @@ button.tree-name:hover { color: var(--text); text-decoration: underline; }
   border-radius: var(--radius);
   background: #fff;
 }
+.viewer-img {
+  flex: 1;
+  min-height: 0;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: var(--radius);
+}
 .viewer-binary {
   flex: 1;
   display: flex;
@@ -1768,6 +1775,10 @@ select.field { appearance: none; }
   border-color: var(--danger);
   max-width: 280px;
 }
+.attach-chip.preview {
+  cursor: pointer;
+}
+.attach-chip.preview:hover { border-color: var(--border-strong); }
 .attach-x {
   flex-shrink: 0;
   border: none;

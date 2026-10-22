@@ -3,7 +3,7 @@ import type { ModelInfo, ModelRef, ChatItem, AgentOption } from "./types"
 import { ModelPicker, AgentPicker } from "./components"
 import { PlusIcon, XMarkIcon } from "@heroicons/react/20/solid"
 import { client } from "./api"
-import { fileNameOf } from "./files"
+import { fileNameOf, FileViewer } from "./files"
 import { uploadFile } from "./upload"
 
 export type { ModelInfo, ModelRef, ChatItem, AgentOption }
@@ -61,6 +61,8 @@ export function Composer({
     Array<{ id: number; name: string; pct: number; cancel: () => void }>
   >([])
   const [uploadError, setUploadError] = useState<string | null>(null)
+  // open index into attachments: tapping a chip previews the file
+  const [preview, setPreview] = useState<number | null>(null)
 
   const onFilesPicked = async (list: FileList | null) => {
     if (!list?.length) return
@@ -157,9 +159,21 @@ export function Composer({
             </span>
           ))}
           {attachments.map((a, i) => (
-            <span key={a.uri} className="attach-chip">
+            <span
+              key={a.uri}
+              className="attach-chip preview"
+              title="Preview"
+              onClick={() => setPreview(i)}
+            >
               <span className="chip-name">{fileNameOf(a.name || a.uri)}</span>
-              <button className="attach-x" aria-label="Remove" onClick={() => onRemoveAttachment(i)}>
+              <button
+                className="attach-x"
+                aria-label="Remove"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRemoveAttachment(i)
+                }}
+              >
                 <XMarkIcon />
               </button>
             </span>
@@ -298,6 +312,13 @@ export function Composer({
           </div>
           <button className="btn-ghost attach-close" onClick={() => setPickerOpen(false)}>Close</button>
         </div>
+      )}
+      {preview != null && attachments[preview] && (
+        <FileViewer
+          path={attachments[preview].uri}
+          name={attachments[preview].name}
+          onClose={() => setPreview(null)}
+        />
       )}
       <div className="composer-note">
         OpenCode runs on your PC — this session is shared with the desktop.
