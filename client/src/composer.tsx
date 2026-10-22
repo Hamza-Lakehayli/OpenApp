@@ -57,20 +57,31 @@ export function Composer({
   const [searching, setSearching] = useState(false)
   // native file browser: picks from the phone/PC, uploads, attaches by path
   const fileRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(0)
+  const [uploads, setUploads] = useState<
+    Array<{ id: number; name: string; pct: number; cancel: () => void }>
+  >([])
   const [uploadError, setUploadError] = useState<string | null>(null)
 
   const onFilesPicked = async (list: FileList | null) => {
     if (!list?.length) return
     setUploadError(null)
-    setUploading((n) => n + list.length)
     for (const f of list) {
+      const id = Date.now() + Math.random()
+      const { promise, cancel } = uploadFile(f, (pct) =>
+        setUploads((us) =>
+          us.map((u) => (u.id === id ? { ...u, pct } : u)),
+        ),
+      )
+      setUploads((us) => [...us, { id, name: f.name, pct: 0, cancel }])
+      const done = () => setUploads((us) => us.filter((u) => u.id !== id))
       try {
-        onPickFile(await uploadFile(f))
+        onPickFile(await promise)
       } catch (err) {
-        setUploadError(`${f.name}: ${String(err).replace(/^Error:\s*/, "")}`)
+        if ((err as DOMException)?.name !== "AbortError") {
+          setUploadError(`${f.name}: ${String(err).replace(/^Error:\s*/, "")}`)
+        }
       } finally {
-        setUploading((n) => Math.max(0, n - 1))
+        done()
       }
     }
   }
@@ -130,8 +141,21 @@ export function Composer({
           )}
         </button>
       )}
-      {(attachments.length > 0 || uploading > 0 || uploadError) && (
+      {(attachments.length > 0 || uploads.length > 0 || uploadError) && (
         <div className="attach-row">
+          {uploads.map((u) => (
+            <span key={u.id} className="attach-chip uploading">
+              <span className="chip-name">{fileNameOf(u.name)}</span>
+              <span className="chip-bar" style={{ width: `${Math.round(u.pct * 100)}%` }} />
+              <button
+                className="attach-x"
+                aria-label={`Cancel upload of ${fileNameOf(u.name)}`}
+                onClick={u.cancel}
+              >
+                <XMarkIcon />
+              </button>
+            </span>
+          ))}
           {attachments.map((a, i) => (
             <span key={a.uri} className="attach-chip">
               {fileNameOf(a.name || a.uri)}
@@ -140,7 +164,6 @@ export function Composer({
               </button>
             </span>
           ))}
-          {uploading > 0 && <span className="attach-chip uploading">uploading {uploading}…</span>}
           {uploadError && (
             <span className="attach-chip upload-error" title={uploadError}>
               {uploadError.length > 42 ? uploadError.slice(0, 42) + "…" : uploadError}

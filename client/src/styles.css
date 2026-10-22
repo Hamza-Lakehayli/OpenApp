@@ -1740,7 +1740,25 @@ select.field { appearance: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.attach-chip.uploading { color: var(--faint); border-style: dashed; }
+.attach-chip.uploading {
+  position: relative;
+  overflow: hidden;
+  color: var(--faint);
+  border-style: dashed;
+}
+.attach-chip.uploading .chip-name {
+  position: relative;
+  z-index: 1;
+}
+.attach-chip.uploading .chip-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  transition: width 0.15s;
+  pointer-events: none;
+}
 .attach-chip.upload-error {
   color: var(--danger);
   border-color: var(--danger);
