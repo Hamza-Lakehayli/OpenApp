@@ -1,8 +1,8 @@
 /**
  * A small, safe markdown renderer for chat text — no external dependencies.
  * Supports what agent output actually uses: fenced code blocks, inline code,
- * bold/italic, headings, lists, and blockquotes — rendered as React nodes,
- * never as raw HTML.
+ * bold/italic, headings, lists, tables, and blockquotes — rendered as React
+ * nodes, never as raw HTML.
  */
 import { Fragment, type ReactNode } from "react"
 
@@ -82,18 +82,54 @@ function renderMd(
   const lines = md.split("\n")
   const out: ReactNode[] = []
   let list: { ordered: boolean; items: string[] } | null = null
+  let table: { head: string[]; rows: string[][] } | null = null
+
+  // `| a | b |` — trim the fence pipes, split the rest
+  const cells = (line: string) => {
+    let t = line.trim()
+    if (t.startsWith("|")) t = t.slice(1)
+    if (t.endsWith("|")) t = t.slice(0, -1)
+    return t.split("|").map((c) => c.trim())
+  }
+  const isSep = (line: string) => {
+    const cs = cells(line)
+    return cs.length > 0 && cs.every((c) => /^:?-{2,}:?$/.test(c))
+  }
+  const isRow = (line: string) => /^\s*\|/.test(line)
 
   const flush = () => {
-    if (!list) return
-    const items = list.items.map((item, i) => <li key={i}>{inline(item, `${keyPrefix}-li-${i}`)}</li>)
-    out.push(
-      list.ordered ? (
-        <ol key={`${keyPrefix}-ul-${out.length}`}>{items}</ol>
-      ) : (
-        <ul key={`${keyPrefix}-ul-${out.length}`}>{items}</ul>
-      ),
-    )
-    list = null
+    if (list) {
+      const items = list.items.map((item, i) => <li key={i}>{inline(item, `${keyPrefix}-li-${i}`)}</li>)
+      out.push(
+        list.ordered ? (
+          <ol key={`${keyPrefix}-ul-${out.length}`}>{items}</ol>
+        ) : (
+          <ul key={`${keyPrefix}-ul-${out.length}`}>{items}</ul>
+        ),
+      )
+      list = null
+    }
+    if (table) {
+      const cell = (c: string, tag: "th" | "td", k: string) => {
+        const content = inline(c, k, onFile)
+        return tag === "th" ? <th key={k}>{content}</th> : <td key={k}>{content}</td>
+      }
+      out.push(
+        <div key={`${keyPrefix}-tbl-${out.length}`} className="md-table-wrap">
+          <table>
+            <thead>
+              <tr>{table.head.map((c, j) => cell(c, "th", `${keyPrefix}-th-${j}`))}</tr>
+            </thead>
+            <tbody>
+              {table.rows.map((r, ri) => (
+                <tr key={ri}>{r.map((c, j) => cell(c, "td", `${keyPrefix}-td-${ri}-${j}`))}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      )
+      table = null
+    }
   }
 
   lines.forEach((line, i) => {
@@ -103,7 +139,15 @@ function renderMd(
     const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line)
     const quote = /^>\s?(.*)$/.exec(line)
 
-    if (heading) {
+    if (isRow(line) && i + 1 < lines.length && isSep(lines[i + 1])) {
+      // table starts: header row directly above a separator row
+      flush()
+      table = { head: cells(line), rows: [] }
+    } else if (table && isSep(line)) {
+      // separator(s) after the header are structure, not content
+    } else if (table && isRow(line)) {
+      table.rows.push(cells(line))
+    } else if (heading) {
       flush()
       const level = heading[1].length
       const Tag = (["h1", "h2", "h3", "h4"] as const)[level - 1]
