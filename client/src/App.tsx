@@ -8,7 +8,7 @@ import type {
   SessionMessageInfo,
   V2Event,
 } from "@opencode/client"
-import { ChatView, ConfirmDialog, ContextMeter, EmptyState, OfflineHelp, PermissionCard, SessionNotice, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
+import { ChatView, ConfirmDialog, ContextMeter, EmptyState, OfflineHelp, PermissionCard, QuestionCard, SessionNotice, Sidebar, UsageChip, Welcome, WorkspacePicker } from "./components"
 import type { ConfirmRequest } from "./components"
 import type { AgentOption, ChatItem, SessionNotice as Notice } from "./types"
 import { Composer, type SendMode } from "./composer"
@@ -16,6 +16,7 @@ import { watchBuild } from "./appver"
 import { SettingsMenu, SettingsPanel, type Panel } from "./settings"
 import { ConnectScreen, PairSheet } from "./connect"
 import { apiPost } from "./api-post"
+import { listForms, replyForm, cancelForm, type QuestionForm } from "./forms"
 import { initialConnection } from "./connection"
 import { describeError, toChatItems, timeAgo } from "./types"
 import { store, type StoredMessage as StoreMessage, type PromptStatus } from "./stream"
@@ -95,6 +96,8 @@ export function App() {
   const [perms, setPerms] = useState<
     Array<{ id: string; sessionID: string; action: string; resources: string[]; message?: string }>
   >([])
+  // pending interactive questions (the `question` tool) for the open session
+  const [forms, setForms] = useState<QuestionForm[]>([])
   // files attached to the next prompt
   const [attachments, setAttachments] = useState<Array<{ uri: string; name: string }>>([])
   // service reachability: down (not running) vs auth (stale password)
@@ -289,6 +292,33 @@ export function App() {
     [loadPerms],
   )
 
+  const loadForms = useCallback(async (sid?: string) => {
+    const target = sid ?? activeRef.current
+    if (!target) return
+    setForms(await listForms(target))
+  }, [])
+
+  const answerForm = useCallback(
+    async (formID: string, answer: Record<string, string | string[]>) => {
+      const sid = activeRef.current
+      if (!sid) return
+      await replyForm(sid, formID, answer)
+      setForms((fs) => fs.filter((f) => f.id !== formID))
+      void loadForms()
+    },
+    [loadForms],
+  )
+
+  const dismissForm = useCallback(
+    async (formID: string) => {
+      const sid = activeRef.current
+      setForms((fs) => fs.filter((f) => f.id !== formID))
+      if (sid) await cancelForm(sid, formID)
+      void loadForms()
+    },
+    [loadForms],
+  )
+
   const loadMeta = useCallback(async () => {
     try {
       const [m, a, active] = await Promise.all([
@@ -370,6 +400,13 @@ export function App() {
 
       if (type === "permission.asked" || type === "permission.replied") {
         void loadPerms()
+        return
+      }
+
+      // interactive questions: created → fetch (renders the card); replied or
+      // cancelled elsewhere → refetch clears it
+      if (type.startsWith("form.")) {
+        if (!sessionID || sessionID === activeRef.current) void loadForms()
         return
       }
 
@@ -513,10 +550,12 @@ export function App() {
       setItems(itemsOf(activeId))
       void loadMessages(activeId)
       void adoptInbox(activeId)
+      void loadForms(activeId)
     } else {
       setItems([])
+      setForms([])
     }
-  }, [activeId, loadMessages, adoptInbox])
+  }, [activeId, loadMessages, adoptInbox, loadForms])
 
   // using a session marks its model recently used, even without an explicit pick
   useEffect(() => {
@@ -788,6 +827,13 @@ export function App() {
               <PermissionCard
                 request={perms[0]}
                 onReply={(d: "once" | "always" | "reject") => void replyPerm(perms[0].id, d)}
+              />
+            )}
+            {forms.length > 0 && (
+              <QuestionCard
+                form={forms[0]}
+                onReply={(answer) => void answerForm(forms[0].id, answer)}
+                onDismiss={() => void dismissForm(forms[0].id)}
               />
             )}
             <Composer

@@ -9,6 +9,7 @@ import type {
   ErrorInfo,
   SessionNotice,
 } from "./types"
+import type { QuestionForm } from "./forms"
 import { Markdown } from "./markdown"
 import { client } from "./api"
 import { store } from "./stream"
@@ -409,6 +410,19 @@ function ToolBlock({
   const [open, setOpen] = useState(false)
   const done = block.state === "completed"
   const failed = block.state === "error"
+  // a pending question renders as the interactive card below the chat; the
+  // raw JSON block would just duplicate it
+  if (block.name === "question" && !done && !failed) {
+    return (
+      <div className="tool">
+        <div className="tool-head is-static">
+          <span className="tool-dot run" />
+          <span className="tool-name">question</span>
+          <span className="tool-state">waiting for your answer</span>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className={"tool" + (failed ? " failed" : "")}>
       <button className="tool-head" onClick={() => setOpen(!open)}>
@@ -766,6 +780,95 @@ export function PermissionCard({
         </button>
         <button className="btn-ghost perm-reject" onClick={() => onReply("reject")}>
           Reject
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- interactive question card ---------- */
+
+/**
+ * The `question` tool pauses the agent and creates a form. Rendered here as
+ * tappable choices + free-form input + Confirm; Dismiss cancels the question
+ * (the tool returns and the agent continues without an answer).
+ */
+export function QuestionCard({
+  form,
+  onReply,
+  onDismiss,
+}: {
+  form: QuestionForm
+  onReply: (answer: Record<string, string | string[]>) => void
+  onDismiss: () => void
+}) {
+  const [picked, setPicked] = useState<Record<string, string[]>>({})
+  const [typed, setTyped] = useState<Record<string, string>>({})
+
+  const toggle = (key: string, value: string, multi: boolean) =>
+    setPicked((s) => {
+      const cur = s[key] ?? []
+      if (!multi) return { ...s, [key]: cur[0] === value ? [] : [value] }
+      return {
+        ...s,
+        [key]: cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value],
+      }
+    })
+
+  const ready = form.fields.every((f) => {
+    const free = (typed[f.key] ?? "").trim()
+    return free.length > 0 || (picked[f.key]?.length ?? 0) > 0
+  })
+
+  const confirm = () => {
+    if (!ready) return
+    const answer: Record<string, string | string[]> = {}
+    for (const f of form.fields) {
+      const free = (typed[f.key] ?? "").trim()
+      const chosen = picked[f.key] ?? []
+      answer[f.key] = free || (f.type === "multiselect" ? chosen : (chosen[0] ?? ""))
+    }
+    onReply(answer)
+  }
+
+  return (
+    <div className="perm-card question-card">
+      <div className="perm-head">OpenCode asks</div>
+      {form.fields.map((f) => (
+        <div key={f.key} className="question-field">
+          <div className="question-title">{f.title}</div>
+          {f.description && <div className="question-desc">{f.description}</div>}
+          <div className="question-options">
+            {(f.options ?? []).map((o) => {
+              const on = (picked[f.key] ?? []).includes(o.value)
+              return (
+                <button
+                  key={o.value}
+                  className={"question-option" + (on ? " is-on" : "")}
+                  onClick={() => toggle(f.key, o.value, f.type === "multiselect")}
+                >
+                  <span className="question-option-label">{o.label}</span>
+                  {o.description && (
+                    <span className="question-option-desc">{o.description}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          <input
+            className="question-custom"
+            placeholder="Or type your own answer…"
+            value={typed[f.key] ?? ""}
+            onChange={(e) => setTyped((c) => ({ ...c, [f.key]: e.target.value }))}
+          />
+        </div>
+      ))}
+      <div className="perm-actions">
+        <button className="btn-primary" disabled={!ready} onClick={confirm}>
+          Confirm
+        </button>
+        <button className="btn-ghost perm-reject" onClick={onDismiss}>
+          Dismiss
         </button>
       </div>
     </div>

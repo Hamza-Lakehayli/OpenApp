@@ -1759,6 +1759,53 @@ select.field { appearance: none; }
 .perm-actions { display: flex; gap: 8px; }
 .perm-reject { color: var(--danger-text, #e66); }
 
+/* ---------- interactive question card ---------- */
+
+.question-field { margin-bottom: 12px; }
+.question-title {
+  color: var(--text);
+  font-weight: 650;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.question-desc { margin-bottom: 8px; }
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.question-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.question-option.is-on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+}
+.question-option-label { font-weight: 600; font-size: 13px; }
+.question-option-desc { font-size: 12px; color: var(--dim); }
+.question-custom {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+.question-custom::placeholder { color: var(--dim); }
+.tool-head.is-static { cursor: default; }
+.tool-head.is-static .tool-state { color: var(--accent); }
+
 /* ---------- composer (+) menu, attachments, file search ---------- */
 
 .plus-btn {

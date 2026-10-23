@@ -1,11 +1,16 @@
 /*
-   New building ships when it ships: phones reopen this app with a cached
-   old bundle. The launcher exposes the current build's hash; when the
-   page (re)gains visibility with a stale one, reload so "close it, open
-   it" always runs the newest build. Reloads only while hidden or on
-   becoming visible — never mid-typing.
+   New builds ship when they ship: phones reopen this app from a cached old
+   shell (service worker cache, HTTP cache). The launcher stamps every served
+   page with its build hash and answers the current hash at
+   /_agentlink/build — when the running page's stamp differs from the
+   server's, reload. Checks run on wake (visibility) and periodically while
+   backgrounded, so "close it, open it" always lands on the newest build.
 */
-let known: string | null = null
+function runningBuild(): string | null {
+  return (
+    document.querySelector('meta[name="agentlink-build"]')?.getAttribute("content") ?? null
+  )
+}
 
 async function check() {
   try {
@@ -14,15 +19,10 @@ async function check() {
     })
     const { hash } = (await res.json()) as { hash?: string }
     if (typeof hash !== "string" || !hash) return
-    if (known == null) {
-      known = hash
-      return
-    }
-    if (hash !== known) {
-      known = hash
-      if (document.hidden) location.reload()
-      else location.reload() // on visibility change / periodic: get fresh
-    }
+    const mine = runningBuild()
+    // no stamp (dev server) or first boot after the mechanism shipped: adopt
+    if (!mine || mine === hash) return
+    location.reload()
   } catch {
     /* launcher down: nothing to compare */
   }

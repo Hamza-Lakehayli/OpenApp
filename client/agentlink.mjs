@@ -48,6 +48,16 @@ if (!existsSync(htmlPath)) {
 }
 const serveHtml = () => readFileSync(htmlPath, "utf8") // fresh on every request
 
+// content hash of the bundle — stamped into the served page (so a page knows
+// which build it IS) and answered at /_agentlink/build (so it can compare)
+const buildHash = () =>
+  [...Buffer.from(serveHtml())].reduce((a, b) => (a * 33 + b) & 0xffffffff, 17).toString(36)
+const htmlWithStamp = () =>
+  serveHtml().replace(
+    "</head>",
+    `<meta name="agentlink-build" content="${buildHash()}">\n</head>`,
+  )
+
 /* ---------- phone → PC file drop ---------- */
 
 // files picked on the phone are uploaded here, then attached to prompts by
@@ -112,7 +122,9 @@ async function sendPush(title, body, tag) {
     // FCM blips (TLS drops etc.) — one retry before giving up on a device
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        await webpush.sendNotification(s, payload)
+        // high urgency + TTL: tell Android's battery bot this nudge is worth
+        // lighting up the screen for (doze defers normal-priority pushes)
+        await webpush.sendNotification(s, payload, { TTL: 7200, urgency: "high" })
         console.log(`  push ok → ${s.endpoint.slice(0, 60)}`)
         break
       } catch (err) {
@@ -146,6 +158,14 @@ const idleTimers = new Map() // sessionID → notify delay handle (queued turns
 // may start right after an execution ends; the delay absorbs the ping-pong)
 
 function trackEvent(type, data) {
+  // interactive question: the session is now blocked on the user. The event
+  // nests the form ({ form: {...} }) so it needs handling before the
+  // top-level sessionID guard.
+  if (type === "form.created") {
+    const form = data?.form ?? data?.properties?.form ?? data
+    if (form?.sessionID) void notifyQuestion(form.sessionID, form)
+    return
+  }
   const sid = data?.sessionID ?? data?.properties?.sessionID
   if (!sid) return
   if (type === "session.execution.started") {
@@ -226,6 +246,13 @@ async function notifyAsk(sid, data) {
     [p.permission?.title, p.title, p.permission?.type, p.type]
       .find((x) => typeof x === "string" && x.trim()) ?? "your approval"
   sendPush(await sessionTitle(sid), `Needs ${what}`, "ask:" + sid)
+}
+
+async function notifyQuestion(sid, form) {
+  const field = form?.fields?.[0]
+  const what = field?.title ?? form?.title ?? "a question"
+  const detail = field?.description ? ` — ${String(field.description).slice(0, 120)}` : ""
+  sendPush(await sessionTitle(sid), `Question: ${what}${detail}`, "ask:" + sid)
 }
 
 function watchEvents() {
@@ -437,11 +464,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/_agentlink/build") {
       // for the app's new-build-on-reopen check (stale chrome boot caches)
-      const html = serveHtml()
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
-      res.end(JSON.stringify({
-        hash: [...Buffer.from(html)].reduce((a, b) => (a * 33 + b) & 0xffffffff, 17).toString(36),
-      }))
+      res.end(JSON.stringify({ hash: buildHash() }))
       return
     }
     if (url.pathname === "/_agentlink/push/vapid") {
@@ -501,7 +525,7 @@ const server = http.createServer(async (req, res) => {
       "cache-control": "no-store",
       ...(needsCookie ? { "set-cookie": `agentlink=${KEY}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax` } : {}),
     })
-    res.end(serveHtml().replace("</body>", bannerHtml + "</body>"))
+    res.end(htmlWithStamp().replace("</body>", bannerHtml + "</body>"))
   } catch (err) {
     if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" })
     res.end("agentlink proxy error: " + String(err).slice(0, 200))
