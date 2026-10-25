@@ -14,7 +14,7 @@
  */
 import http from "node:http"
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync, rmSync } from "node:fs"
-import { homedir, platform } from "node:os"
+import { homedir, platform, networkInterfaces } from "node:os"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawn, spawnSync } from "node:child_process"
@@ -109,15 +109,18 @@ function savePush() {
   writeFileSync(pushFile, JSON.stringify(pushState))
 }
 
-// every subscription's push payload carries the tunnel URL to open;
-// no tunnel, no point in pushing
+// pushes travel launcher → FCM → device, never through the tunnel, so
+// they work with or without ngrok
 async function sendPush(title, body, tag) {
-  if (!phoneUrl || !pushState.subs?.length) {
-    console.log(`  push skipped: phoneUrl=${!!phoneUrl} subs=${pushState.subs?.length ?? 0}`)
+  if (!pushState.subs?.length) {
+    console.log(`  push skipped: no subscriptions`)
     return
   }
   console.log(`  push → "${title}" → ${pushState.subs.length} device(s): ${body.slice(0, 60)}`)
-  const payload = JSON.stringify({ title, body, url: phoneUrl, tag })
+  // relative on purpose: the service worker resolves it against its own
+  // scope, so a tap reopens the app wherever that device lives it (LAN or
+  // tunnel) — an absolute ngrok URL would keep opening a dead origin
+  const payload = JSON.stringify({ title, body, url: "/", tag })
   for (const s of [...pushState.subs]) {
     // FCM blips (TLS drops etc.) — one retry before giving up on a device
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -393,7 +396,24 @@ async function proxy(req, res, url) {
   else res.end()
 }
 
-let phoneUrl = null // set once ngrok reports its public URL
+// the PC's WiFi address — the phone's direct route; no tunnel involved.
+// ngrok is intentionally not auto-started anymore: run it by hand when
+// leaving-home access is needed (`ngrok http 8170`), then re-pair the phone
+// with the URL it prints.
+function lanAddress() {
+  try {
+    for (const list of Object.values(networkInterfaces())) {
+      for (const net of list ?? []) {
+        if (net.family === "IPv4" && !net.internal && net.address.startsWith("192.168."))
+          return net.address
+      }
+    }
+  } catch {}
+  return null
+}
+const LAN_IP = lanAddress()
+const LAN_URL = LAN_IP ? `http://${LAN_IP}:${PORT}` : null
+const LAN_PAIR = LAN_URL ? `${LAN_URL}/?key=${KEY}#conn=${Buffer.from(JSON.stringify({ u: LAN_URL, p: "" })).toString("base64url")}` : null
 
 // resolve absolute paths once - service contexts may have a thin PATH
 function resolveCmd(name) {
@@ -401,7 +421,6 @@ function resolveCmd(name) {
   return r.status === 0 ? r.stdout.toString().split(/\r?\n/)[0].trim() : null
 }
 const opencodePath = resolveCmd(platform === "win32" ? "opencode.cmd" : "opencode")
-const ngrokPath = resolveCmd("ngrok")
 
 // make sure an OpenCode service exists at boot, so the phone works
 // even before the TUI is opened (idempotent - no-op if already running)
@@ -425,17 +444,17 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/_agentlink/info") {
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
-      res.end(JSON.stringify({ phoneUrl }))
+      res.end(JSON.stringify({ phoneUrl: LAN_PAIR }))
       return
     }
     if (url.pathname === "/_agentlink/qr.svg") {
-      if (!phoneUrl) {
+      if (!LAN_PAIR) {
         res.writeHead(404)
         res.end()
         return
       }
       res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "no-store" })
-      res.end(renderSVG(phoneUrl, { border: 1 }))
+      res.end(renderSVG(LAN_PAIR, { border: 1 }))
       return
     }
     if (url.pathname === "/_agentlink/upload" && req.method === "POST") {
@@ -543,7 +562,10 @@ server.on("error", (err) => {
   process.exit(1)
 })
 
-server.listen(PORT, "127.0.0.1", () => {
+server.listen(PORT, "0.0.0.0", () => {
+  // bound to all interfaces on purpose: when the ngrok quota runs dry
+  // (ERR_NGROK_725 on the free tier) the phone on the same WiFi can still
+  // reach the app directly over the LAN — the key gate protects either way.
   const origin = `http://localhost:${PORT}`
   const conn = Buffer.from(
     JSON.stringify({ u: origin, p: "" }),
@@ -552,6 +574,7 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log("")
   console.log("  agentlink running")
   console.log(`  local:     ${localUrl}`)
+  if (LAN_URL) console.log(`  lan:       ${LAN_URL}/?key=${KEY}`)
   console.log(`  opencode:  ${service ? service.url : readService()?.url ?? "?"}`)
   console.log("  opening your browser…")
 
@@ -567,48 +590,15 @@ server.listen(PORT, "127.0.0.1", () => {
     console.log("  (couldn't auto-open the browser — visit the local URL above)")
   }
 
-  // ngrok, if it's installed — its own visible window so it can be
-  // inspected and killed independently of the app
-  const ngrok =
-    platform === "win32"
-      ? spawn("cmd", ["/c", "start", "agentlink-ngrok", "cmd", "/k", ngrokPath || "ngrok", "http", String(PORT)], { stdio: "ignore" })
-      : spawn(ngrokPath || "ngrok", ["http", String(PORT)], { stdio: "ignore" })
-  ngrok.on("error", () => {
+  // pairing QR for the LAN URL — the phone's way in (no tunnel needed on
+  // the same WiFi)
+  if (LAN_PAIR) {
     console.log("")
-    console.log("  ngrok not installed — phone over Wi-Fi needs the Vite dev")
-    console.log("  server instead (npm run dev), or install ngrok and rerun:")
-    console.log("    https://ngrok.com/download  →  ngrok config add-authtoken <token>")
-  })
-  ngrok.on("spawn", () => {
-    let tries = 0
-    const poll = setInterval(async () => {
-      tries++
-      try {
-        const res = await fetch("http://127.0.0.1:4040/api/tunnels")
-        const data = await res.json()
-        const https = (data.tunnels ?? []).find((t) =>
-          String(t.public_url ?? "").startsWith("https://"),
-        )
-        if (https) {
-          clearInterval(poll)
-          const publicUrl = https.public_url
-          const phoneConn = Buffer.from(
-            JSON.stringify({ u: publicUrl, p: "" }),
-          ).toString("base64url")
-          phoneUrl = publicUrl + "/?key=" + KEY + "#conn=" + phoneConn
-          console.log("")
-          console.log(`  phone (scan, or open): ${phoneUrl}`)
-          console.log("")
-          console.log(renderANSI(phoneUrl, { border: 1 }))
-          console.log("  The tunnel URL grants full OpenCode access — share it")
-          console.log("  like a password. Free ngrok shows a warning page first;")
-          console.log("  click Visit once.")
-        }
-      } catch {
-        if (tries > 240) clearInterval(poll)
-      }
-    }, 500)
-  })
+    console.log(`  phone (scan, or open): ${LAN_PAIR}`)
+    console.log(renderANSI(LAN_PAIR, { border: 1 }))
+    console.log("  Same WiFi as this PC? Use this. Outside? Start ngrok")
+    console.log("  manually (`ngrok http 8170`) and re-pair with its URL.")
+  }
 
   console.log("")
   console.log("  Ctrl+C to stop.")

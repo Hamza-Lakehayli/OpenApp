@@ -1,4 +1,4 @@
-# OpenApp
+﻿# OpenApp
 
 A phone-first web remote for [OpenCode](https://opencode.ai). It talks to the
 OpenCode service running on your machine and shows the same sessions your
@@ -25,7 +25,8 @@ cd OpenApp
 Then just **double-click `start-agentlink.bat`** (Windows) or run
 `./start-agentlink.sh` (macOS/Linux) — first run installs dependencies,
 after that it starts the app instantly, opens your browser already
-connected, and sets up the phone QR if ngrok is installed.
+connected. The phone pairs over your WiFi (LAN URL + QR in the launcher window); ngrok is optional and no longer auto-started — run 
+grok http 8170 yourself when you need access away from home, then re-pair with the URL it prints.
 
 - **On the PC**: open `http://localhost:5173`
 - **On the phone** (same Wi-Fi): open `http://<pc-ip>:5173`
@@ -61,3 +62,4 @@ Sent prompts get a client-generated `msg_…` id reused for the optimistic
 bubble, the inbox item, the created user message and any retry, so a send
 that reaches the server is always reconcilable by that id even when the
 response never arrives. The reducer is unit-tested (`npm test`).
+
