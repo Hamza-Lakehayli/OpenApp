@@ -39,6 +39,18 @@ export function ConnectScreen({ onCancel }: { onCancel?: () => void }) {
       setError("Enter the server address.")
       return
     }
+    try {
+      const host = new URL(cfg.url).hostname
+      if (host === "0.0.0.0" || host === "::") {
+        setError(
+          "0.0.0.0 is only a server listening address. Use localhost on this PC, or this PC's LAN IP on your phone.",
+        )
+        return
+      }
+    } catch {
+      setError("Enter a valid HTTP or HTTPS server address.")
+      return
+    }
     setBusy(true)
     setError(null)
     try {

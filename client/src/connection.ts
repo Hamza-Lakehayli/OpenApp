@@ -35,6 +35,14 @@ export function normalizeUrl(input: string): string {
   return url.replace(/\/+$/, "")
 }
 
+/**
+ * A page served by agentlink already has a credential-injecting same-origin
+ * proxy. It must never inherit an old direct-server address from localStorage
+ * (especially 0.0.0.0, a bind address that no browser can connect to).
+ */
+export const hostedByAgentlink =
+  document.querySelector('meta[name="agentlink-build"]') != null
+
 /** ClientOptions for a connection — none means same-origin (the dev proxy). */
 export function optionsFor(
   cfg: ConnectionConfig | null,
@@ -90,4 +98,8 @@ export function connectionFromHash(): ConnectionConfig | null {
  * The connection the app boots with: a pairing hash wins over the stored
  * config; nothing means same-origin, which in dev is the Vite proxy.
  */
-export const initialConnection: ConnectionConfig | null = connectionFromHash() ?? loadConnection()
+const pairedConnection = connectionFromHash()
+if (hostedByAgentlink) clearConnection()
+export const initialConnection: ConnectionConfig | null = hostedByAgentlink
+  ? null
+  : pairedConnection ?? loadConnection()

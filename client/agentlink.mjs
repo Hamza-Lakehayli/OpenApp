@@ -117,10 +117,10 @@ async function sendPush(title, body, tag) {
     return
   }
   console.log(`  push → "${title}" → ${pushState.subs.length} device(s): ${body.slice(0, 60)}`)
-  // relative on purpose: the service worker resolves it against its own
-  // scope, so a tap reopens the app wherever that device lives it (LAN or
-  // tunnel) — an absolute ngrok URL would keep opening a dead origin
-  const payload = JSON.stringify({ title, body, url: "/", tag })
+  // Existing subscriptions may belong to the now-expired ngrok origin. Point
+  // their notification taps at today's LAN pairing URL so the old worker can
+  // still bring the user into the working app.
+  const payload = JSON.stringify({ title, body, url: LAN_PAIR ?? "/", tag })
   for (const s of [...pushState.subs]) {
     // FCM blips (TLS drops etc.) — one retry before giving up on a device
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -291,6 +291,7 @@ function watchEvents() {
     }
   }).catch(() => {}).finally(() => {
     // the service can restart (new port/password) — re-watch
+    service = readService()
     setTimeout(watchEvents, 5000)
   })
 }
@@ -323,10 +324,11 @@ function readService() {
 /* ---------- the server: static + credential-injecting proxy ---------- */
 
 function authorized(req, url) {
-  // a browser on this machine is trusted; tunnel traffic is not
-  // (ngrok marks forwarded requests with X-Forwarded-* headers)
-  const tunneled = req.headers["x-forwarded-host"] || req.headers["x-forwarded-proto"]
-  if (!tunneled) return true
+  // Only loopback is implicitly trusted. LAN/tunnel visitors need the key on
+  // first load; the resulting HttpOnly cookie authenticates later requests.
+  const remote = req.socket.remoteAddress ?? ""
+  const local = remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1"
+  if (local) return true
   const cookie = (req.headers.cookie || "")
     .split(/;\s*/)
     .some((c) => c === `agentlink=${KEY}`)
@@ -374,13 +376,18 @@ async function proxy(req, res, url) {
     })
   }
   if (!service) ensureOpencode()
-  let up = service ? await send(service) : null
+  let up = null
+  if (service) {
+    try { up = await send(service) } catch {}
+  }
   if (!up || up.status === 401 || up.status === 503) {
     // the OpenCode service may have restarted with a new password or port —
     // re-read service.json (and revive the service if it died), retry once
     ensureOpencode()
     service = readService()
-    if (service) up = await send(service)
+    if (service) {
+      try { up = await send(service) } catch {}
+    }
   }
   if (!up) {
     res.writeHead(502, { "content-type": "text/plain" })

@@ -17,7 +17,7 @@ import { SettingsMenu, SettingsPanel, type Panel } from "./settings"
 import { ConnectScreen, PairSheet } from "./connect"
 import { apiPost } from "./api-post"
 import { listForms, replyForm, cancelForm, type QuestionForm } from "./forms"
-import { initialConnection } from "./connection"
+import { hostedByAgentlink, initialConnection } from "./connection"
 import { describeError, toChatItems, timeAgo } from "./types"
 import { store, type StoredMessage as StoreMessage, type PromptStatus } from "./stream"
 import { touchRecent } from "./recent"
@@ -83,7 +83,9 @@ export function App() {
   const [pendingModel, setPendingModel] = useState<ModelInfo | undefined>(undefined)
   const [pendingAgent, setPendingAgent] = useState<string | undefined>(undefined)
   // the shipping gate: no connection config (outside dev) → the connect screen
-  const [configured] = useState(initialConnection != null || import.meta.env.DEV)
+  const [configured] = useState(
+    hostedByAgentlink || initialConnection != null || import.meta.env.DEV,
+  )
   const [welcome, setWelcome] = useState(
     () => localStorage.getItem("agentlink.welcomed") !== "1",
   )
